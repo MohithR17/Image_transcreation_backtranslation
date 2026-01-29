@@ -1,0 +1,9 @@
+source_countries: ['india', 'japan', 'nigeria', 'portugal', 'turkey', 'united-states']
+source_data_path: ./data/part1
+target_country: Brazil
+prompt: make the image culturally relevant to Brazil
+seed: 0
+image_guidance: 1.5
+num_inference_steps: 100
+text_guidance: 7.5
+debug: False
