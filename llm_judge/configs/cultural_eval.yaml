@@ -1,0 +1,21 @@
+# Example 1: Cultural Appropriateness Evaluation
+# Use predefined template
+
+template: "cultural_appropriateness"
+
+# Variables for the template
+template_vars:
+  target_culture: "Japanese"
+
+# Images to evaluate
+image_paths:
+  - "./outputs/part1/instructpix2pix/japan/image1.jpg"
+  - "./outputs/part1/instructpix2pix/japan/image2.jpg"
+  - "./outputs/part1/instructpix2pix/japan/image3.jpg"
+
+# Generation parameters
+max_tokens: 512
+temperature: 0.1
+
+# Or load from a file listing image paths
+# image_paths: "./image_list.txt"

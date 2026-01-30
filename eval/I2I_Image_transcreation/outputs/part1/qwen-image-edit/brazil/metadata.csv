@@ -1,0 +1,8 @@
+src_image_path,src_country,src_category,tgt_image_path,prompt,status
+https://storage.googleapis.com/image-transcreation/part1/india/bird_House-sparrow.jpg,india,bird,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/bird_Indian-peafowl.jpg,india,bird,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/bird_Rose-ringed-parakeet.jpg,india,bird,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/bird_Indian-roller.jpg,india,bird,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/bird_Common-myna.jpg,india,bird,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/mammal_bengal-tiger.jpg,india,mammal,,make the image culturally relevant to Brazil,cuda_oom
+https://storage.googleapis.com/image-transcreation/part1/india/mammal_deer.jpg,india,mammal,,make the image culturally relevant to Brazil,cuda_oom

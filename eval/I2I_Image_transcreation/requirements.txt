@@ -1,0 +1,25 @@
+# Core Dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+diffusers>=0.25.0
+transformers>=4.35.0
+accelerate>=0.25.0
+
+# Image Processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Data Handling
+pyyaml>=6.0
+requests>=2.31.0
+
+# Utilities
+tqdm>=4.66.0
+numpy>=1.24.0
+
+# Optional: For better performance
+safetensors>=0.4.0
+xformers>=0.0.22  # Optional: for memory-efficient attention (requires compatible CUDA)
+
+# Optional: For logging and tracking
+wandb>=0.16.0  # Optional: if you want experiment tracking

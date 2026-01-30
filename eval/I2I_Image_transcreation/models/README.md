@@ -24,26 +24,63 @@ def edit_image(image, prompt, config):
 
 ## Available Models
 
-### 1. InstructPix2Pix (`instructpix2pix.py`)
+### 1. InstructPix2Pix (`instructpix2pix.py`) ✅ Ready to Use
 - **Model**: `timbrooks/instruct-pix2pix`
 - **Base**: Stable Diffusion 1.5
 - **Speed**: Fast
 - **Quality**: Good
 - **VRAM**: ~8GB
+- **Status**: Works out of the box
 
-### 2. MagicBrush (`magicbrush.py`)
-- **Model**: `osunlp/MagicBrush`
+### 2. MagicBrush (`magicbrush.py`) ⚠️ Requires Setup
+- **Model**: `vinesmsuic/magicbrush-Jul7-LoRA-SD15-local` (community version)
 - **Base**: Stable Diffusion
 - **Speed**: Fast
 - **Quality**: Better (trained on more diverse edits)
 - **VRAM**: ~8GB
+- **Status**: Requires downloading model or setting `MAGICBRUSH_MODEL_PATH`
+- **Alternative**: Use `instructpix2pix` which has similar architecture
 
-### 3. SDXL InstructPix2Pix (`sdxl-instructpix2pix.py`)
+### 3. SDXL InstructPix2Pix (`sdxl-instructpix2pix.py`) ✅ Ready to Use
 - **Model**: `diffusers/sdxl-instructpix2pix-768`
 - **Base**: Stable Diffusion XL
 - **Speed**: Slow
 - **Quality**: Best
 - **VRAM**: ~16GB
+- **Status**: Works out of the box
+
+### 4. CosXL Edit (`cosxl-edit.py`) ✅ Ready to Use
+- **Model**: `stabilityai/cosxl`
+- **Base**: Stable Diffusion XL
+- **Speed**: Medium
+- **Quality**: Excellent
+- **VRAM**: ~16GB
+- **Status**: Works out of the box
+
+## Model Availability Issues
+
+### MagicBrush Setup
+
+If you want to use MagicBrush, you have two options:
+
+**Option 1: Use the community LoRA version (default)**
+```bash
+# The model will try to download: vinesmsuic/magicbrush-Jul7-LoRA-SD15-local
+python I2I_trancreation.py --config configs/part1/japan.yaml --model magicbrush
+```
+
+**Option 2: Download and use local checkpoint**
+```bash
+# Download the official checkpoint from MagicBrush repo
+# Then set the environment variable:
+export MAGICBRUSH_MODEL_PATH="/path/to/magicbrush/checkpoint"
+python I2I_trancreation.py --config configs/part1/japan.yaml --model magicbrush
+```
+
+**Option 3: Use InstructPix2Pix instead** (Recommended if MagicBrush fails)
+```bash
+python I2I_trancreation.py --config configs/part1/japan.yaml --model instructpix2pix
+```
 
 ## Adding a New Model
 
