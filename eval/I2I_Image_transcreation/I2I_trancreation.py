@@ -1,5 +1,6 @@
 from PIL import Image, ImageOps
 import os
+import sys
 import torch
 import PIL
 import argparse
@@ -9,6 +10,9 @@ import logging
 import json
 import requests
 from io import BytesIO
+
+# Add parent directory to path to access shared models
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 
 def download_image(path):
@@ -241,12 +245,13 @@ def main():
 
     # Get the model-specific function
     try:
-        model_module = __import__(f"models.{model_name}", fromlist=[''])
+        # Import from shared models/I2I directory
+        model_module = __import__(f"models.I2I.{model_name}", fromlist=[''])
         model_func = model_module.edit_image
-        logging.info(f"Loaded model function from models/{model_name}.py")
+        logging.info(f"Loaded model function from models/I2I/{model_name}.py")
     except ImportError as e:
         logging.error(f"Could not load model '{model_name}': {e}")
-        logging.error(f"Please create models/{model_name}.py with an edit_image(image, prompt, config) function")
+        logging.error(f"Please create models/I2I/{model_name}.py with an edit_image(image, prompt, config) function")
         return
     
     # Process all images using the model-specific function

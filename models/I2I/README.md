@@ -1,6 +1,8 @@
-# Image Editing Models
+# Image Editing Models (I2I)
 
-This directory contains model-specific implementations for different image editing models.
+This directory contains Image-to-Image editing model implementations shared across all evaluation tasks.
+
+**Location:** `/models/I2I/` (shared across project)
 
 ## Structure
 
@@ -32,16 +34,7 @@ def edit_image(image, prompt, config):
 - **VRAM**: ~8GB
 - **Status**: Works out of the box
 
-### 2. MagicBrush (`magicbrush.py`) ⚠️ Requires Setup
-- **Model**: `vinesmsuic/magicbrush-Jul7-LoRA-SD15-local` (community version)
-- **Base**: Stable Diffusion
-- **Speed**: Fast
-- **Quality**: Better (trained on more diverse edits)
-- **VRAM**: ~8GB
-- **Status**: Requires downloading model or setting `MAGICBRUSH_MODEL_PATH`
-- **Alternative**: Use `instructpix2pix` which has similar architecture
-
-### 3. SDXL InstructPix2Pix (`sdxl-instructpix2pix.py`) ✅ Ready to Use
+### 2. SDXL InstructPix2Pix (`sdxl-instructpix2pix.py`) ✅ Ready to Use
 - **Model**: `diffusers/sdxl-instructpix2pix-768`
 - **Base**: Stable Diffusion XL
 - **Speed**: Slow
@@ -49,13 +42,40 @@ def edit_image(image, prompt, config):
 - **VRAM**: ~16GB
 - **Status**: Works out of the box
 
-### 4. CosXL Edit (`cosxl-edit.py`) ✅ Ready to Use
+### 3. CosXL Edit (`cosxl-edit.py`) ✅ Ready to Use
 - **Model**: `stabilityai/cosxl`
 - **Base**: Stable Diffusion XL
 - **Speed**: Medium
 - **Quality**: Excellent
 - **VRAM**: ~16GB
 - **Status**: Works out of the box
+
+### 4. Qwen-Image-Edit (`qwen-image-edit.py`) ✅ VLM-based Editing
+- **Model**: `Qwen/Qwen-Image-Edit`
+- **Base**: Qwen2-VL (Vision-Language Model)
+- **Speed**: Medium
+- **Quality**: Good (instruction understanding)
+- **VRAM**: ~12-16GB
+- **Status**: Ready to use
+- **Features**: Better instruction understanding, multimodal approach
+
+### 5. FLUX.2 Klein (`flux2-klein.py`) ✅ Fast & Efficient
+- **Model**: `black-forest-labs/FLUX.2-klein-4B`
+- **Base**: FLUX.2 (4B parameters)
+- **Speed**: Fast
+- **Quality**: Excellent
+- **VRAM**: ~8-10GB (with optimizations)
+- **Status**: Ready to use
+- **Features**: Lightweight, efficient, good instruction following
+
+### 6. MagicBrush (`magicbrush.py`) ⚠️ Requires Setup
+- **Model**: `vinesmsuic/magicbrush-Jul7-LoRA-SD15-local` (community version)
+- **Base**: Stable Diffusion
+- **Speed**: Fast
+- **Quality**: Better (trained on more diverse edits)
+- **VRAM**: ~8GB
+- **Status**: Requires downloading model or setting `MAGICBRUSH_MODEL_PATH`
+- **Alternative**: Use `instructpix2pix` which has similar architecture
 
 ## Model Availability Issues
 
@@ -84,11 +104,12 @@ python I2I_trancreation.py --config configs/part1/japan.yaml --model instructpix
 
 ## Adding a New Model
 
-1. Create a new file `models/your_model_name.py`
+1. Create a new file in this directory: `models/I2I/your_model_name.py`
 2. Implement the `edit_image(image, prompt, config)` function
-3. Use the model:
+3. Use the model in any evaluation:
 
 ```bash
+# From eval/I2I_Image_transcreation/
 python I2I_trancreation.py --config configs/part1/japan.yaml --model your_model_name
 ```
 

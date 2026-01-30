@@ -1,0 +1,16 @@
+# Example 2: Cultural Transcreation Evaluation
+# Evaluates how well images were transcreated between cultures
+
+template: "cultural_transcreation"
+
+template_vars:
+  source_culture: "American"
+  target_culture: "Japanese"
+
+# Can load from metadata CSV
+image_paths:
+  - "./outputs/part1/instructpix2pix/japan/united-states_image1.jpg"
+  - "./outputs/part1/instructpix2pix/japan/united-states_image2.jpg"
+
+max_tokens: 512
+temperature: 0.1

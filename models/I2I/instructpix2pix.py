@@ -1,18 +1,10 @@
 """
-MagicBrush model for image transcreation.
-
-NOTE: MagicBrush checkpoint needs to be downloaded manually.
-Options:
-1. Download from: https://huggingface.co/vinesmsuic/magicbrush-Jul7-LoRA-SD15-local
-2. Or use InstructPix2Pix as MagicBrush is based on it
-3. Set MAGICBRUSH_MODEL_PATH environment variable to local path
-
-For now, using InstructPix2Pix as fallback (similar architecture).
+InstructPix2Pix model for image transcreation.
+Model: timbrooks/instruct-pix2pix
 """
 
 import torch
 import logging
-import os
 from diffusers import StableDiffusionInstructPix2PixPipeline, EulerAncestralDiscreteScheduler
 
 # Global variable to cache the loaded model
@@ -21,26 +13,14 @@ _device = None
 
 
 def load_pipe(device="cuda"):
-    """Load and cache the MagicBrush pipeline."""
+    """Load and cache the InstructPix2Pix pipeline."""
     global _pipe, _device
     
     if _pipe is None or _device != device:
-        # Check if user has set a local MagicBrush model path
-        magicbrush_path = os.environ.get("MAGICBRUSH_MODEL_PATH")
-        
-        if magicbrush_path and os.path.exists(magicbrush_path):
-            model_id = magicbrush_path
-            logging.info(f"Loading MagicBrush from local path: {magicbrush_path}")
-        else:
-            # Try the community LoRA version
-            model_id = "vinesmsuic/magicbrush-Jul7-LoRA-SD15-local"
-            logging.info(f"Loading MagicBrush model: {model_id}")
-            logging.warning("If this fails, you can:")
-            logging.warning("1. Download the model and set MAGICBRUSH_MODEL_PATH env variable")
-            logging.warning("2. Or use 'instructpix2pix' model instead")
+        logging.info("Loading InstructPix2Pix model: timbrooks/instruct-pix2pix")
         
         _pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            model_id,
+            "timbrooks/instruct-pix2pix",
             torch_dtype=torch.float16,
             safety_checker=None
         )
@@ -54,14 +34,14 @@ def load_pipe(device="cuda"):
             _pipe.enable_vae_slicing()
         
         _device = device
-        logging.info("MagicBrush model loaded successfully")
+        logging.info("InstructPix2Pix model loaded successfully")
     
     return _pipe
 
 
 def edit_image(image, prompt, config):
     """
-    Edit image using MagicBrush.
+    Edit image using InstructPix2Pix.
     
     Args:
         image: PIL Image to edit
