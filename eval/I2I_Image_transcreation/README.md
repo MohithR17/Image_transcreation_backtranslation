@@ -4,24 +4,53 @@
 
 A modular system for cultural image transcreation using different image editing models. The code separates **data logic** from **model-specific logic** for easy extensibility.
 
-## Architecture
+## Project Structure
 
 ```
-I2I_Image_transcreation/
-├── I2I_trancreation.py          # Main script (data logic only)
-├── models/                       # Model implementations
-│   ├── instructpix2pix.py       # InstructPix2Pix
-│   ├── magicbrush.py            # MagicBrush
-│   └── sdxl-instructpix2pix.py  # SDXL InstructPix2Pix
-└── configs/                      # Data configurations
-    ├── generate_configs.sh
-    └── part1/
-        ├── brazil.yaml
-        ├── japan.yaml
-        └── ...
+Image_transcreation_backtranslation/
+├── models/                           # Shared model implementations (root level)
+│   └── I2I/                          # Image-to-Image editing models
+│       ├── __init__.py
+│       ├── README.md                 # Model documentation
+│       ├── instructpix2pix.py        # InstructPix2Pix model
+│       ├── sdxl-instructpix2pix.py   # SDXL InstructPix2Pix
+│       ├── cosxl-edit.py             # CosXL Edit model
+│       ├── magicbrush.py             # MagicBrush model
+│       ├── qwen-image-edit.py        # Qwen Image Edit (VLM-based)
+│       └── flux2-klein.py            # FLUX.2 Klein 4B
+│
+├── eval/                             # Evaluation tasks
+│   └── I2I_Image_transcreation/      # Image transcreation evaluation
+│       ├── I2I_trancreation.py       # Main evaluation script
+│       ├── run_all_countries.sh      # Batch processing script
+│       ├── README.md                 # This file
+│       ├── requirements.txt          # Python dependencies
+│       ├── configs/                  # Data configurations
+│       │   ├── generate_configs.sh
+│       │   └── part1/
+│       │       ├── brazil.yaml
+│       │       ├── japan.yaml
+│       │       └── ...
+│       ├── data/                     # Source images
+│       │   └── part1/
+│       │       ├── brazil.json
+│       │       ├── india.json
+│       │       └── ...
+│       └── outputs/                  # Generated images
+│           └── part1/
+│               ├── instructpix2pix/
+│               ├── qwen-image-edit/
+│               └── ...
+│
+└── llm_judge/                        # LLM-as-judge evaluation
+    ├── qwen_vl_judge.py              # Generic VLM evaluation framework
+    └── evaluate_from_metadata.py     # Evaluate from metadata CSVs
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design.
+**Key Design Decisions:**
+- **Shared Models**: Models are at root level (`/models/I2I/`) so they can be reused across multiple evaluation tasks
+- **Evaluation Isolation**: Each eval task has its own directory with configs, data, and outputs
+- **Model Import**: Evaluations import models via: `from models.I2I import <model_name>`
 
 ## Quick Start
 
@@ -37,7 +66,7 @@ This creates configs in `configs/part1/`:
 
 ### 2. Run with Different Models
 
-The same config works with any model:
+All models are automatically imported from `/models/I2I/`:
 
 ```bash
 # InstructPix2Pix (fast, good quality)
@@ -45,10 +74,15 @@ python I2I_trancreation.py \
     --config configs/part1/japan.yaml \
     --model instructpix2pix
 
-# MagicBrush (fast, better quality)
+# Qwen-Image-Edit (VLM-based, excellent quality)
 python I2I_trancreation.py \
     --config configs/part1/japan.yaml \
-    --model magicbrush
+    --model qwen-image-edit
+
+# FLUX.2 Klein (fast distilled model, excellent quality)
+python I2I_trancreation.py \
+    --config configs/part1/japan.yaml \
+    --model flux2-klein
 
 # SDXL InstructPix2Pix (slow, best quality)
 python I2I_trancreation.py \
@@ -56,26 +90,52 @@ python I2I_trancreation.py \
     --model sdxl-instructpix2pix
 ```
 
+**Or use the batch script for all countries:**
+
+```bash
+# Run all countries with a specific model
+./run_all_countries.sh qwen-image-edit
+
+# Run specific countries only
+./run_all_countries.sh flux2-klein --countries japan india brazil
+
+# Skip certain countries
+./run_all_countries.sh instructpix2pix --skip usa canada
+
+# Continue on errors
+./run_all_countries.sh sdxl-instructpix2pix --continue-on-error
+```
+
 ### Output Directory Structure
 
-Outputs are automatically organized as:
+Outputs are automatically organized by model and target country:
 ```
 outputs/part1/
-├── instruct-pix2pix/
+├── instructpix2pix/
 │   ├── japan/
 │   │   ├── metadata.csv
 │   │   ├── brazil_img1.jpg
 │   │   └── india_img2.jpg
 │   └── brazil/
 │       └── ...
-├── MagicBrush/
+├── qwen-image-edit/
 │   ├── japan/
 │   └── brazil/
-└── sdxl-instructpix2pix-768/
+├── flux2-klein/
+│   └── japan/
+└── sdxl-instructpix2pix/
     └── ...
 ```
 
 **Format**: `./outputs/part1/<model_name>/<target_country>/`
+
+**Metadata CSV includes:**
+- `src_image_path`: Original image URL/path
+- `src_country`: Source country of the image
+- `src_category`: Category (food, architecture, etc.)
+- `tgt_image_path`: Path to generated image
+- `prompt`: Instruction used for editing
+- `status`: success/cuda_oom/error/download_failed
 
 ## Config File Structure
 
@@ -106,41 +166,69 @@ debug: False
 
 ## Supported Models
 
-| Model | HuggingFace ID | Quality | Speed |
-|-------|---------------|---------|-------|
-| InstructPix2Pix | `timbrooks/instruct-pix2pix` | Good | Fast |
-| MagicBrush | `osunlp/MagicBrush` | Better | Fast |
-| SDXL-InstructPix2Pix | `diffusers/sdxl-instructpix2pix-768` | Best | Slow |
-| CosXL-Edit | `stabilityai/cosxl-edit` | Best | Slow |
+All models are located in `/models/I2I/` at the project root:
+
+| Model | File | HuggingFace ID | Quality | Speed | VRAM |
+|-------|------|----------------|---------|-------|------|
+| InstructPix2Pix | `instructpix2pix.py` | `timbrooks/instruct-pix2pix` | Good | Fast | ~8GB |
+| SDXL-InstructPix2Pix | `sdxl-instructpix2pix.py` | `diffusers/sdxl-instructpix2pix-768` | Best | Slow | ~16GB |
+| CosXL-Edit | `cosxl-edit.py` | `stabilityai/cosxl` | Best | Slow | ~16GB |
+| MagicBrush | `magicbrush.py` | Custom LoRA | Better | Fast | ~8GB |
+| Qwen-Image-Edit | `qwen-image-edit.py` | `Qwen/Qwen-Image-Edit` | Excellent | Medium | ~12-16GB |
+| FLUX.2 Klein | `flux2-klein.py` | `black-forest-labs/FLUX.2-klein-4B` | Excellent | Fast | ~8-10GB |
+
+**Model Selection Guide:**
+- **Fast prototyping**: InstructPix2Pix, FLUX.2 Klein
+- **Best quality**: SDXL-InstructPix2Pix, CosXL-Edit, Qwen-Image-Edit
+- **VLM-based editing**: Qwen-Image-Edit (understands complex instructions)
+- **Low VRAM**: InstructPix2Pix, MagicBrush, FLUX.2 Klein
+
+See `/models/I2I/README.md` for detailed model documentation.
 
 ## Example Workflows
+
+### Run All Countries with Batch Script
+
+```bash
+# Run all countries with qwen-image-edit
+./run_all_countries.sh qwen-image-edit
+
+# Run only specific countries
+./run_all_countries.sh flux2-klein --countries japan india brazil
+
+# Skip certain countries
+./run_all_countries.sh instructpix2pix --skip usa canada
+
+# Continue even if some countries fail
+./run_all_countries.sh sdxl-instructpix2pix --continue-on-error
+```
 
 ### Test One Country with Multiple Models
 
 ```bash
 # Run Japan config with 3 different models
-for model in "timbrooks/instruct-pix2pix" "osunlp/MagicBrush" "diffusers/sdxl-instructpix2pix-768"
+for model in instructpix2pix qwen-image-edit flux2-klein
 do
-    python ../../I2I_trancreation.py \
+    python I2I_trancreation.py \
         --config configs/part1/japan.yaml \
         --model "$model"
 done
 ```
 
 Results will be in:
-- `outputs/part1/instruct-pix2pix/japan/`
-- `outputs/part1/MagicBrush/japan/`
-- `outputs/part1/sdxl-instructpix2pix-768/japan/`
+- `outputs/part1/instructpix2pix/japan/`
+- `outputs/part1/qwen-image-edit/japan/`
+- `outputs/part1/flux2-klein/japan/`
 
-### Run All Countries with One Model
+### Run All Countries with One Model (Manual)
 
 ```bash
-# Run MagicBrush on all countries
+# Run qwen-image-edit on all countries manually
 for config in configs/part1/*.yaml
 do
-    python ../../I2I_trancreation.py \
+    python I2I_trancreation.py \
         --config "$config" \
-        --model osunlp/MagicBrush
+        --model qwen-image-edit
 done
 ```
 
@@ -150,9 +238,40 @@ done
 # Edit any config file and set: debug: True
 # This processes only 20 images for quick testing
 
-python ../../I2I_trancreation.py \
+python I2I_trancreation.py \
     --config configs/part1/japan.yaml \
-    --model timbrooks/instruct-pix2pix
+    --model instructpix2pix
+```
+
+## Environment Setup
+
+### 1. Install Dependencies
+
+```bash
+# Create conda environment
+conda create -n image-transcreation python=3.10
+conda activate image-transcreation
+
+# Install from requirements
+cd eval/I2I_Image_transcreation
+pip install -r requirements.txt
+```
+
+### 2. Set HuggingFace Cache (Optional)
+
+```bash
+# Use shared cache directory (recommended for clusters)
+export HF_HOME=/data/hf_cache
+
+# Or add to ~/.bashrc for persistence
+echo 'export HF_HOME=/data/hf_cache' >> ~/.bashrc
+```
+
+### 3. Verify Model Access
+
+```bash
+# Test model imports
+python -c "from models.I2I import instructpix2pix; print('✓ Models accessible')"
 ```
 
 ## Data Format
@@ -204,11 +323,27 @@ Each JSON file:
 Each run creates:
 - **Edited images**: `<source_country>_<original_filename>.jpg`
 - **metadata.csv**: Processing log with columns:
-  - `src_image_path`: Original image path
+  - `src_image_path`: Original image URL/path
   - `src_country`: Source country
+  - `src_category`: Image category (food, architecture, etc.)
   - `tgt_image_path`: Generated image path
   - `prompt`: Instruction used
   - `status`: success/cuda_oom/error/download_failed
+
+### Using Metadata for Evaluation
+
+The metadata CSV can be used with the LLM-as-judge framework:
+
+```bash
+# Evaluate generated images with Qwen-VL
+cd ../../llm_judge
+python evaluate_from_metadata.py \
+    --metadata ../eval/I2I_Image_transcreation/outputs/part1/qwen-image-edit/japan/metadata.csv \
+    --template cultural_appropriateness \
+    --model Qwen/Qwen2-VL-7B-Instruct
+```
+
+See `/llm_judge/README.md` for evaluation details.
 
 ## Troubleshooting
 
@@ -264,40 +399,94 @@ src_image_path,src_country,tgt_image_path,prompt,status
 ## Troubleshooting
 
 ### CUDA Out of Memory
+- Images are automatically resized to 1024px max
+- Use smaller model: InstructPix2Pix or FLUX.2 Klein instead of SDXL
+- Script automatically skips OOM images and continues
+- Enable CPU offload in model config (already enabled for most models)
 
-1. **Reduce image size**: Images are auto-resized to 1024px max
-2. **Use smaller model**: Try InstructPix2Pix instead of SDXL
-3. **Enable memory optimizations** (already enabled in script):
-   - Attention slicing
-   - VAE slicing
-
-### Model Loading Errors
-
+### Model Not Found or Import Error
 ```bash
-# Install latest diffusers
+# Update diffusers to latest version
 pip install --upgrade diffusers transformers accelerate
 
-# For SDXL models
-pip install --upgrade diffusers[torch]
+# Verify model imports work
+python -c "from models.I2I import instructpix2pix"
 ```
+
+### Model Loading Errors
+- **Qwen-Image-Edit**: Requires `diffusers>=0.30.0`
+- **FLUX.2 Klein**: Requires `diffusers>=0.30.0`
+- Check `/models/I2I/README.md` for model-specific requirements
 
 ### Slow Generation
+- Reduce `num_inference_steps` in config (try 50 or 30)
+- Enable `debug: True` for testing (processes only 20 images)
+- Use faster models: InstructPix2Pix, FLUX.2 Klein, MagicBrush
+- For FLUX.2 Klein: Already optimized to 4 steps
 
-- Reduce `num_inference_steps` (try 50 or 30)
-- Use smaller models (InstructPix2Pix vs SDXL)
-- Enable `debug: true` for testing
+### HuggingFace Cache Issues
+```bash
+# Set cache directory
+export HF_HOME=/data/hf_cache
 
-## Adding Custom Models
-
-To add a new model, update the `load_model()` function in `I2I_trancreation.py`:
-
-```python
-elif "your-model-name" in model_name.lower():
-    pipe = YourModelPipeline.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16
-    )
+# Or use default (may fill up home directory)
+# ~/.cache/huggingface
 ```
+
+## Adding New Models
+
+To add a new model to the shared model library:
+
+1. **Create model file** in `/models/I2I/`:
+```python
+# /models/I2I/my_new_model.py
+import torch
+from diffusers import YourPipeline
+
+_pipeline = None
+
+def load_pipeline(device="cuda"):
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = YourPipeline.from_pretrained("model/name")
+        _pipeline.to(device)
+    return _pipeline
+
+def edit_image(image, prompt, config):
+    pipeline = load_pipeline()
+    # Your editing logic here
+    result = pipeline(image=image, prompt=prompt, **config)
+    return result.images[0]
+```
+
+2. **Update** `/models/I2I/__init__.py` if needed
+
+3. **Document** in `/models/I2I/README.md`
+
+4. **Use** in evaluation:
+```bash
+python I2I_trancreation.py --config configs/part1/japan.yaml --model my-new-model
+```
+
+The evaluation script will automatically import `from models.I2I.my_new_model import edit_image`.
+
+## Related Components
+
+### Model Library
+- **Location**: `/models/I2I/`
+- **Documentation**: `/models/I2I/README.md`
+- **Models**: 6+ image editing models (InstructPix2Pix, Qwen-Image-Edit, FLUX.2 Klein, etc.)
+
+### LLM-as-Judge Evaluation
+- **Location**: `/llm_judge/`
+- **Purpose**: Evaluate generated images with VLMs (Qwen2-VL, etc.)
+- **Usage**: Reads metadata.csv files and scores images
+- **Templates**: Cultural appropriateness, image quality, instruction following, etc.
+
+### Text-to-Image Generation
+- **Location**: `/ArchAla/T2I_generation.py`
+- **Purpose**: Generate images from scratch (not editing)
+- **Models**: SDXL, SD3, FLUX Schnell/Dev, Playground v2.5
 
 ## Citation
 

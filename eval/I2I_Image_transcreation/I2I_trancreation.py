@@ -140,6 +140,17 @@ def process_images(model_func, source_paths, source_countries, source_categories
             try:
                 logging.info(f"Processing [{i+1}/{len(source_paths)}]: {image_path}")
                 
+                # Check if output image already exists
+                src_country = source_countries[i]
+                src_category = source_categories[i]
+                generated_image_path = os.path.join(output_dir, f"{src_country}_{os.path.basename(image_path)}")
+                
+                if os.path.exists(generated_image_path):
+                    logging.info(f"⏭️  Skipping - already exists: {generated_image_path}")
+                    f.write(f"{image_path},{src_country},{src_category},{generated_image_path},{config['prompt']},skipped_exists\n")
+                    successful += 1
+                    continue
+                
                 # Load and resize image
                 image = download_image(image_path)
                 if image == "error":
@@ -150,14 +161,11 @@ def process_images(model_func, source_paths, source_countries, source_categories
                     
                 image = resize_image(image)
                 prompt = config["prompt"]
-                src_country = source_countries[i]
-                src_category = source_categories[i]
                 
                 # Generate edited image using model-specific function
                 generated_image = model_func(image, prompt, config)
                 
-                # Save generated image
-                generated_image_path = os.path.join(output_dir, f"{src_country}_{os.path.basename(image_path)}")
+                # Save generated image (path already defined at start of loop)
                 generated_image.save(generated_image_path)
                 
                 # Optionally save concatenated image (source + generated)

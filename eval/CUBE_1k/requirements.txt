@@ -1,0 +1,7 @@
+# Requirements for T2I CUBE Evaluation
+
+torch>=2.0.0
+diffusers>=0.30.0
+transformers>=4.30.0
+accelerate>=0.20.0
+Pillow>=10.0.0

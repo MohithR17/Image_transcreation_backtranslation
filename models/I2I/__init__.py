@@ -21,6 +21,7 @@ Available models:
 - instructpix2pix: Fast, SD 1.5 based
 - sdxl-instructpix2pix: High quality, SDXL based
 - cosxl-edit: Alternative SDXL-based model
+- qwen-image-edit: VLM-based editing with better instruction understanding
 - flux2-klein: Fast and efficient FLUX.2 4B model
 - magicbrush: Enhanced editing (requires setup)
 """

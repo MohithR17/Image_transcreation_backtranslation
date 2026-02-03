@@ -1,0 +1,25 @@
+# Example configuration for T2I CUBE evaluation
+
+# Model settings
+model: flux-dev  # or qwen-image-2512, flux-schnell, sdxl, etc.
+
+# Data settings
+cube_data: data/cube_1k.json
+output_dir: outputs
+
+# Generation settings
+num_inference_steps: 50  # 50 for flux-dev, 50 for qwen-image-2512, 4 for flux-schnell
+guidance_scale: 3.5      # 3.5 for flux-dev, 7.5 for qwen-image-2512, 0.0 for flux-schnell
+seed: 42
+height: 1024
+width: 1024
+
+# Processing settings
+debug: false            # Set to true to process only 20 samples
+max_samples: null       # Set to a number to limit samples, null for all
+
+# Model-specific notes:
+# - flux-dev: State-of-the-art quality, 50 steps, guidance_scale=3.5 (requires auth)
+# - qwen-image-2512: Great for multilingual/cultural content, 50 steps, guidance_scale=7.5
+# - flux-schnell: Fast distilled model, 4 steps, guidance_scale=0.0
+# - sdxl: High quality baseline, 50 steps, guidance_scale=7.5
