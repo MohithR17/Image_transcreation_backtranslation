@@ -1,0 +1,25 @@
+task: "image_transcreation"
+vlm: "Qwen/Qwen2-VL-7B-Instruct"
+
+# Model-specific config (override via CLI --model)
+model_name: "flux2-klein"
+
+# Metadata path with placeholders for {model_name} and {country}
+metadata:
+  path: "../../eval/I2I_Image_transcreation/outputs/part1/{model_name}/{country}/metadata.csv"
+  type: "csv"
+  filter_status: "success"
+
+# Image Transcreation specific
+countries:
+  - "brazil"
+  - "india"
+  - "japan"
+  - "nigeria"
+  - "portugal"
+  - "turkey"
+  - "united-states"
+
+generation:
+  max_tokens: 1024
+  temperature: 0.1
