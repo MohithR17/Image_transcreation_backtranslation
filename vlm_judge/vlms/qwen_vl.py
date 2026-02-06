@@ -7,6 +7,8 @@ from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
 from PIL import Image
 from typing import List
+import requests
+from io import BytesIO
 
 
 class QwenVLEvaluator:
@@ -60,7 +62,18 @@ class QwenVLEvaluator:
         images = []
         for path in image_paths:
             try:
-                img = Image.open(path).convert("RGB")
+                # Handle both URLs and local file paths
+                if path.startswith('http://') or path.startswith('https://'):
+                    # Download image from URL
+                    response = requests.get(path, timeout=120)
+                    if response.status_code == 200:
+                        img = Image.open(BytesIO(response.content)).convert("RGB")
+                    else:
+                        raise Exception(f"Failed to download image from {path}, status: {response.status_code}")
+                else:
+                    # Load from local file
+                    img = Image.open(path).convert("RGB")
+                
                 images.append(img)
             except Exception as e:
                 print(f"Error loading image {path}: {e}")

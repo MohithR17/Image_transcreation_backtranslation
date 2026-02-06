@@ -1,0 +1,40 @@
+# Ignore generated images and outputs
+eval/CUBE_1k/outputs/
+eval/I2I_Image_transcreation/outputs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model cache
+.cache/
+*.pt
+*.pth
+*.ckpt
+
+# Logs
+*.log

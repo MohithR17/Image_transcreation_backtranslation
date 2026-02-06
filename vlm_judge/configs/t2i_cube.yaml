@@ -1,0 +1,12 @@
+# Configuration for T2I CUBE evaluation task
+
+task: "t2i_cube"
+
+vlm: "Qwen/Qwen2-VL-2B-Instruct"  # Can be overridden with --vlm
+
+metadata:
+  path: "../eval/CUBE_1k/outputs/{model_name}/metadata.json"
+
+generation:
+  max_tokens: 512
+  temperature: 0.1

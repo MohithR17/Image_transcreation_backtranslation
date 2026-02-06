@@ -16,12 +16,13 @@ import sys
 from pathlib import Path
 
 # Import task modules
-from tasks import image_transcreation
+from tasks import image_transcreation, t2i_cube
 
 
 # Task registry
 TASK_MAP = {
     'image_transcreation': image_transcreation.run_evaluation,
+    't2i_cube': t2i_cube.run_evaluation,
 }
 
 

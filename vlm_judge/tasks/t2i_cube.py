@@ -1,7 +1,7 @@
 """
-Image Transcreation Evaluation Task
+T2I CUBE Evaluation Task
 
-Evaluates image-to-image transcreation across cultures using VLM.
+Evaluates text-to-image generation for cultural concepts using VLM.
 """
 
 import sys
@@ -13,68 +13,62 @@ from tqdm import tqdm
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from shared.data_loader import load_csv_metadata
+from shared.data_loader import load_json_metadata
 from shared.response_parser import parse_json_response
 from vlms import get_vlm_evaluator
 
 
-# System prompt for the VLM (exact specification)
-SYSTEM_PROMPT = """You are an expert multimodal evaluator specializing in cultural reasoning and visual understanding. Evaluate whether an adapted image successfully transforms the source image to a target culture while preserving the category of the concept in the original image (like food, beverage, agriculture etc.)"""
+# System prompt for the VLM
+SYSTEM_PROMPT = """You are an expert multimodal evaluator specializing in cultural reasoning and visual understanding. Your task is to evaluate whether a generated image accurately represents a culturally-specific concept from a particular country."""
 
 
-# User prompt template (exact specification)
-USER_PROMPT_TEMPLATE = """You are given:
-- Source image
-- Adapted image (system output)
-- Source culture description
-- Target culture description
-- Category of Source Image
+# User prompt template
+USER_PROMPT_TEMPLATE = """You are evaluating a text-to-image generation task.
 
-Source culture: {src_country}
-Target culture: {target_culture}
-Category: {category}
+**Concept:** {name}
+**Country:** {country}
+**Domain:** {domain}
+**Text Prompt:** "{prompt}"
 
-Evaluate the adapted image using the criteria below. Score each criterion from 1 (very poor) to 5 (excellent) and give brief reasoning (1–3 sentences) per criterion. Give scores such that for each criterion, a score of 4 and 5 would indicate overall success and a score of 1, 2, or 3 would indicate failure.
+**Generated Image:** (provided)
 
-A. Source Image Cultural Appropriateness (1–5)
-How well does the source image already reflect the target culture?
+Evaluate the generated image using the criteria below. Score each criterion from 1 (very poor) to 5 (excellent) and give brief reasoning (1–3 sentences) per criterion. Give scores such that for each criterion, a score of 4 and 5 would indicate overall success and a score of 1, 2, or 3 would indicate failure.
 
-B. Adapted Image Cultural Appropriateness (1–5)
-How well does the adapted image reflect the target culture?
+A. **Cultural Accuracy (1–5):** Does the generated image accurately represent the cultural concept from {country}?
 
-C. Semantic Preservation — Concept (1–5)
-Does the adapted image belong to the same category as the source image (e.g., food remains food; clothes are changed into clothes, and so on), while allowing culturally appropriate changes?
+B. **Visual Quality (1–5):** Is the image visually coherent, realistic, and free of artifacts?
 
-D. Visual & Structural Coherence (1–5)
-Is the image visually coherent and free of major artifacts or inconsistencies?
+C. **Prompt Adherence (1–5):** Does the image match the text prompt description?
+
+D. **Concept Recognition (1–5):** Would someone familiar with {country} culture recognize this concept and domain from the image?
 
 After scoring A/B/C/D, provide an Overall Success Score (1–5) that reflects overall task success considering all criteria together. Briefly justify the overall score (1–3 sentences).
 
 Return JSON only in the exact format:
 {{
-  "A_source_cultural_appropriateness": {{"score": 1-5, "reason": "..."}},
-  "B_adapted_cultural_appropriateness": {{"score": 1-5, "reason": "..."}},
-  "C_semantic_preservation": {{"score": 1-5, "reason": "..."}},
-  "D_visual_coherence": {{"score": 1-5, "reason": "..."}},
+  "A_cultural_accuracy": {{"score": 1-5, "reason": "..."}},
+  "B_visual_quality": {{"score": 1-5, "reason": "..."}},
+  "C_prompt_adherence": {{"score": 1-5, "reason": "..."}},
+  "D_concept_recognition": {{"score": 1-5, "reason": "..."}},
   "overall_success": {{"score": 1-5, "reason": "..."}}
 }}"""
 
 
-def build_prompts(metadata_row: Dict[str, Any], target_culture: str) -> tuple:
+def build_prompts(metadata_row: Dict[str, Any]) -> tuple:
     """
     Build system and user prompts for evaluation.
     
     Args:
-        metadata_row: Metadata dict with src_country, src_category, etc.
-        target_culture: Target culture name
+        metadata_row: Metadata dict with name, country, domain, prompt
         
     Returns:
         Tuple of (system_prompt, user_prompt)
     """
     user_prompt = USER_PROMPT_TEMPLATE.format(
-        src_country=metadata_row.get('src_country', 'Unknown'),
-        target_culture=target_culture,
-        category=metadata_row.get('src_category', 'Unknown')
+        name=metadata_row.get('name', 'Unknown'),
+        country=metadata_row.get('country', 'Unknown'),
+        domain=metadata_row.get('domain', 'Unknown'),
+        prompt=metadata_row.get('prompt', 'Unknown')
     )
     
     return SYSTEM_PROMPT, user_prompt
@@ -82,7 +76,7 @@ def build_prompts(metadata_row: Dict[str, Any], target_culture: str) -> tuple:
 
 def parse_response(text: str) -> Dict[str, Any]:
     """
-    Parse VLM response for image transcreation evaluation.
+    Parse VLM response for T2I CUBE evaluation.
     
     Args:
         text: Raw VLM response
@@ -91,10 +85,10 @@ def parse_response(text: str) -> Dict[str, Any]:
         Dict with parsed response and validity flag
     """
     expected_keys = [
-        'A_source_cultural_appropriateness',
-        'B_adapted_cultural_appropriateness',
-        'C_semantic_preservation',
-        'D_visual_coherence',
+        'A_cultural_accuracy',
+        'B_visual_quality',
+        'C_prompt_adherence',
+        'D_concept_recognition',
         'overall_success'
     ]
     
@@ -128,10 +122,10 @@ def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     # Compute mean scores
     criteria = [
-        'A_source_cultural_appropriateness',
-        'B_adapted_cultural_appropriateness',
-        'C_semantic_preservation',
-        'D_visual_coherence',
+        'A_cultural_accuracy',
+        'B_visual_quality',
+        'C_prompt_adherence',
+        'D_concept_recognition',
         'overall_success'
     ]
     
@@ -152,56 +146,42 @@ def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
 def run_evaluation(
     config: Dict[str, Any],
     model_name: str,
-    country: str,
     output_path: str
 ):
     """
-    Run Image Transcreation evaluation.
+    Run T2I CUBE evaluation.
     
     Args:
         config: Configuration dict from YAML
-        model_name: I2I model name (flux2-klein, etc.)
-        country: Target country
-        output_path: Where to save results (can be overridden to include VLM)
+        model_name: T2I model name (FLUX.1-dev, sdxl, etc.)
+        output_path: Where to save results
     """
-    # Extract VLM name for display
-    vlm_model = config['vlm']
-    vlm_short = vlm_model.split('/')[-1].replace('-Instruct', '') if '/' in vlm_model else vlm_model
-    
     print(f"\n{'='*60}")
-    print(f"Image Transcreation Evaluation")
+    print(f"T2I CUBE Evaluation")
     print(f"{'='*60}")
-    print(f"I2I Model: {model_name}")
-    print(f"Target Culture: {country}")
-    print(f"VLM Judge: {vlm_short}")
+    print(f"T2I Model: {model_name}")
+    print(f"VLM Judge: {config['vlm']}")
     print(f"{'='*60}\n")
     
     # Build metadata path
-    metadata_path = config['metadata']['path'].format(
-        model_name=model_name,
-        country=country
-    )
+    metadata_path = config['metadata']['path'].format(model_name=model_name)
     
     print(f"Loading metadata: {metadata_path}")
     
     # Load metadata
-    metadata = load_csv_metadata(
-        metadata_path,
-        filter_status=config['metadata'].get('filter_status')
-    )
+    metadata = load_json_metadata(metadata_path)
     
     # Convert relative image paths to absolute paths
-    # The metadata CSV contains paths relative to the I2I_Image_transcreation directory
-    # e.g., "./outputs/part1/flux2-klein/brazil/..."
-    # We need to resolve them relative to ../eval/I2I_Image_transcreation/
-    i2i_base_dir = Path(__file__).parent.parent.parent / "eval" / "I2I_Image_transcreation"
+    # The metadata JSON contains paths relative to the CUBE_1k directory
+    cube_base_dir = Path(__file__).parent.parent.parent / "eval" / "CUBE_1k"
     
     for row in metadata:
-        # Only convert target image path if it's a relative path (starts with ./)
-        if 'tgt_image_path' in row and row['tgt_image_path'].startswith('./'):
-            # Remove the "./" prefix and resolve relative to I2I_Image_transcreation directory
-            rel_path = row['tgt_image_path'][2:]  # Remove "./"
-            row['tgt_image_path'] = str(i2i_base_dir / rel_path)
+        if 'image_path' in row and not row['image_path'].startswith('/'):
+            # Remove "outputs/" prefix if present and resolve
+            img_path = row['image_path']
+            if img_path.startswith('outputs/'):
+                img_path = img_path[8:]  # Remove "outputs/"
+            row['image_path'] = str(cube_base_dir / "outputs" / img_path)
     
     print(f"✓ Loaded {len(metadata)} samples\n")
     
@@ -213,14 +193,17 @@ def run_evaluation(
         print("Delete the file to re-evaluate.\n")
         return
     
-    # Load VLM using factory
-    print(f"Initializing VLM: {config['vlm']}")
-    evaluator = get_vlm_evaluator(model_name=config['vlm'])
+    # Load VLM
+    vlm_model = config['vlm']
+    vlm_short = vlm_model.split('/')[-1].replace('-Instruct', '') if '/' in vlm_model else vlm_model
+    
+    print(f"Initializing VLM: {vlm_model}")
+    evaluator = get_vlm_evaluator(model_name=vlm_model)
     evaluator.load_model()
     
     # Evaluation loop
     results = []
-    checkpoint_interval = 10  # Save every 10 samples
+    checkpoint_interval = 10
     
     # Check if checkpoint exists to resume
     checkpoint_file = output_file.parent / f"{output_file.stem}_checkpoint.json"
@@ -238,10 +221,10 @@ def run_evaluation(
         actual_idx = start_idx + idx
         
         # Build prompts
-        system_prompt, user_prompt = build_prompts(row, country.replace('-', ' ').title())
+        system_prompt, user_prompt = build_prompts(row)
         
-        # Get image paths
-        image_paths = [row['src_image_path'], row['tgt_image_path']]
+        # Get image path (single image for T2I)
+        image_paths = [row['image_path']]
         
         # Call VLM
         try:
@@ -283,10 +266,9 @@ def run_evaluation(
             with open(checkpoint_file, 'w') as f:
                 json.dump({
                     'config': {
-                        'task': 'image_transcreation',
-                        'i2i_model': model_name,
-                        'target_culture': country,
-                        'vlm': config['vlm'],
+                        'task': 't2i_cube',
+                        't2i_model': model_name,
+                        'vlm': vlm_model,
                         'vlm_short': vlm_short
                     },
                     'results': results,
@@ -308,15 +290,13 @@ def run_evaluation(
     metrics = compute_metrics(results)
     
     # Save results
-    output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
     output_data = {
         'config': {
-            'task': 'image_transcreation',
-            'i2i_model': model_name,
-            'target_culture': country,
-            'vlm': config['vlm'],
+            'task': 't2i_cube',
+            't2i_model': model_name,
+            'vlm': vlm_model,
             'vlm_short': vlm_short
         },
         'metrics': metrics,

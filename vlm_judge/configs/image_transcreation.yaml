@@ -6,7 +6,7 @@ model_name: "flux2-klein"
 
 # Metadata path with placeholders for {model_name} and {country}
 metadata:
-  path: "../../eval/I2I_Image_transcreation/outputs/part1/{model_name}/{country}/metadata.csv"
+  path: "../eval/I2I_Image_transcreation/outputs/part1/{model_name}/{country}/metadata.csv"
   type: "csv"
   filter_status: "success"
 
@@ -21,5 +21,5 @@ countries:
   - "united-states"
 
 generation:
-  max_tokens: 1024
+  max_tokens: 512  # Reduced from 1024 for faster evaluation
   temperature: 0.1

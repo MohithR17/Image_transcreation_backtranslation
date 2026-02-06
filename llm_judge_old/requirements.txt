@@ -1,0 +1,23 @@
+# Qwen-VL LLM Judge Requirements
+
+# Core dependencies
+transformers>=4.37.0
+torch>=2.0.0
+accelerate>=0.25.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Qwen-VL specific
+qwen-vl-utils>=0.0.2
+
+# Data handling
+pyyaml>=6.0
+pandas>=2.0.0
+requests>=2.31.0
+
+# Utilities
+tqdm>=4.66.0
+
+# Optional: For better performance
+flash-attn>=2.5.0  # Optional: requires CUDA and can be tricky to install

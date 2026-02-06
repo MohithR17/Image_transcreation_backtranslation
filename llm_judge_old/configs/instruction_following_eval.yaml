@@ -1,0 +1,14 @@
+# Example 4: Instruction Following Evaluation
+# Evaluates how well the image follows the editing instruction
+
+template: "instruction_following"
+
+template_vars:
+  instruction: "Transform this image to reflect Japanese cultural aesthetics and traditions"
+
+image_paths:
+  - "./outputs/part1/magicbrush/japan/image1.jpg"
+  - "./outputs/part1/magicbrush/japan/image2.jpg"
+
+max_tokens: 512
+temperature: 0.1

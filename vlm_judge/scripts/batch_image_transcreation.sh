@@ -21,7 +21,7 @@ COUNTRIES=(
     "nigeria"
     "portugal"
     "turkey"
-    "united-states"
+    "the-united-states"
 )
 
 echo "=========================================="
