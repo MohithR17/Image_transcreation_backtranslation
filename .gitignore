@@ -2,6 +2,9 @@
 eval/CUBE_1k/outputs/
 eval/I2I_Image_transcreation/outputs/
 
+# Ignore large VLM evaluation result files
+vlm_judge/results/**/evaluation.json
+
 # Python cache
 __pycache__/
 *.pyc
