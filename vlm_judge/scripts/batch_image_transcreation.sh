@@ -11,6 +11,7 @@
 
 set -e
 
+export HF_HOME=/data/hf_cache/mohithr
 MODEL=${1:-"flux2-klein"}
 VLM_MODEL=${2:-""}  # Optional VLM override
 

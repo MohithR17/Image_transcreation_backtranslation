@@ -41,3 +41,7 @@ ENV/
 
 # Logs
 *.log
+
+# VLM evaluation results
+vlm_judge/logs/
+vlm_judge/results/

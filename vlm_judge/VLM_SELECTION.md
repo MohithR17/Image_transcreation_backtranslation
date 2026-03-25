@@ -47,10 +47,14 @@ The factory automatically detects the VLM type by checking if any registry key a
 
 ## Supported VLMs
 
-### Qwen2-VL (Currently Implemented)
+### Qwen2-VL
 - `Qwen/Qwen2-VL-2B-Instruct` (smaller, faster)
 - `Qwen/Qwen2-VL-7B-Instruct` (default)
 - `Qwen/Qwen2-VL-72B-Instruct` (larger, more capable)
+
+### Ovis2.5
+- `AIDC-AI/Ovis2.5-9B` (9B parameter multimodal model)
+- `AIDC-AI/Ovis2.5-Llama3.2-3B` (smaller variant)
 
 ### Future VLMs
 To add a new VLM:
@@ -92,17 +96,21 @@ python run_evaluation.py \
 ## Example Workflow
 
 ```bash
-# Evaluate flux2-klein with default VLM (7B)
+# Evaluate flux2-klein with default VLM (Qwen2-VL-7B)
 ./scripts/batch_image_transcreation.sh flux2-klein
-# Results: results/image_transcreation/default/flux2-klein/
+# Results: results/image_transcreation/Qwen2-VL-7B/flux2-klein/
 
 # Evaluate instructpix2pix with smaller VLM (2B) for faster testing
 ./scripts/batch_image_transcreation.sh instructpix2pix "Qwen/Qwen2-VL-2B-Instruct"
 # Results: results/image_transcreation/Qwen2-VL-2B/instructpix2pix/
 
-# Evaluate magicbrush with larger VLM (72B) for higher quality
-./scripts/batch_image_transcreation.sh magicbrush "Qwen/Qwen2-VL-72B-Instruct"
-# Results: results/image_transcreation/Qwen2-VL-72B/magicbrush/
+# Evaluate magicbrush with Ovis2.5-9B
+./scripts/batch_image_transcreation.sh magicbrush "AIDC-AI/Ovis2.5-9B"
+# Results: results/image_transcreation/Ovis2.5-9B/magicbrush/
+
+# Evaluate with larger Qwen VLM (72B) for higher quality
+./scripts/batch_image_transcreation.sh qwen-image-edit "Qwen/Qwen2-VL-72B-Instruct"
+# Results: results/image_transcreation/Qwen2-VL-72B/qwen-image-edit/
 ```
 
 ## Results Directory Structure

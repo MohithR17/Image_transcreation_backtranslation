@@ -18,46 +18,52 @@ from shared.response_parser import parse_json_response
 from vlms import get_vlm_evaluator
 
 
-# System prompt for the VLM (exact specification)
-SYSTEM_PROMPT = """You are an expert multimodal evaluator specializing in cultural reasoning and visual understanding. Evaluate whether an adapted image successfully transforms the source image to a target culture while preserving the category of the concept in the original image (like food, beverage, agriculture etc.)"""
+# System prompt for the VLM
+SYSTEM_PROMPT = """You are an expert multimodal evaluator specializing in cultural reasoning and visual understanding. Your task is to evaluate image transcreation - the process of adapting images from one culture to another while preserving semantic meaning.
+
+You will evaluate images based on cultural appropriateness, semantic preservation, and visual quality. Provide objective, detailed assessments."""
 
 
-# User prompt template (exact specification)
-USER_PROMPT_TEMPLATE = """You are given:
-- Source image
-- Adapted image (system output)
-- Source culture description
-- Target culture description
-- Category of Source Image
+# User prompt template
+USER_PROMPT_TEMPLATE = """You are evaluating an image transcreation task.
 
-Source culture: {src_country}
-Target culture: {target_culture}
-Category: {category}
+**Source Culture:** {src_country}
+**Target Culture:** {target_culture}
+**Category:** {category}
 
-Evaluate the adapted image using the criteria below. Score each criterion from 1 (very poor) to 5 (excellent) and give brief reasoning (1–3 sentences) per criterion. Give scores such that for each criterion, a score of 4 and 5 would indicate overall success and a score of 1, 2, or 3 would indicate failure.
+**Images:**
+- First image: Source image (from {src_country})
+- Second image: Transcreated image (adapted for {target_culture})
 
-A. Source Image Cultural Appropriateness (1–5)
-How well does the source image already reflect the target culture?
+**Evaluation Criteria:**
 
-B. Adapted Image Cultural Appropriateness (1–5)
-How well does the adapted image reflect the target culture?
+A. **Source Cultural Appropriateness (1-5):** Does the source image appropriately represent {src_country} culture in the given category?
 
-C. Semantic Preservation — Concept (1–5)
-Does the adapted image belong to the same category as the source image (e.g., food remains food; clothes are changed into clothes, and so on), while allowing culturally appropriate changes?
+B. **Adapted Cultural Appropriateness (1-5):** Does the transcreated image appropriately represent {target_culture} culture while maintaining the concept?
 
-D. Visual & Structural Coherence (1–5)
-Is the image visually coherent and free of major artifacts or inconsistencies?
+C. **Semantic Preservation (1-5):** Does the transcreated image preserve the core semantic meaning and intent of the source image?
 
-After scoring A/B/C/D, provide an Overall Success Score (1–5) that reflects overall task success considering all criteria together. Briefly justify the overall score (1–3 sentences).
+D. **Visual Coherence (1-5):** Is the transcreated image visually coherent, realistic, and of good quality?
 
-Return JSON only in the exact format:
+E. **Category Cultural Adaptation (1-5):** Was the specific concept/item within the category culturally adapted? For example, if category is food, was "pizza" changed to a culturally appropriate food like "dosa" for Indian culture? Score higher when the actual item is transformed to match target culture, not just superficial background changes.
+
+F. **Physical Plausibility (1-5):** How realistic and natural does the image appear? Are objects properly sized relative to each other? Are elements integrated naturally (not artificially pasted)? Are cultural symbols (flags, decorations) placed sensibly and not nonsensically added? Score lower for unrealistic compositions or improper object scales.
+
+**Overall Success (1-5):** Overall, how successful is this transcreation?
+
+**Response Format:**
+Return ONLY a JSON object with this exact structure:
 {{
-  "A_source_cultural_appropriateness": {{"score": 1-5, "reason": "..."}},
-  "B_adapted_cultural_appropriateness": {{"score": 1-5, "reason": "..."}},
-  "C_semantic_preservation": {{"score": 1-5, "reason": "..."}},
-  "D_visual_coherence": {{"score": 1-5, "reason": "..."}},
-  "overall_success": {{"score": 1-5, "reason": "..."}}
-}}"""
+  "A_source_cultural_appropriateness": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "B_adapted_cultural_appropriateness": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "C_semantic_preservation": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "D_visual_coherence": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "E_category_cultural_adaptation": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "F_physical_plausibility": {{"score": <1-5>, "reason": "<brief explanation>"}},
+  "overall_success": {{"score": <1-5>, "reason": "<brief explanation>"}}
+}}
+
+Provide your evaluation now."""
 
 
 def build_prompts(metadata_row: Dict[str, Any], target_culture: str) -> tuple:
@@ -95,6 +101,8 @@ def parse_response(text: str) -> Dict[str, Any]:
         'B_adapted_cultural_appropriateness',
         'C_semantic_preservation',
         'D_visual_coherence',
+        'E_category_cultural_adaptation',
+        'F_physical_plausibility',
         'overall_success'
     ]
     
@@ -132,6 +140,8 @@ def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         'B_adapted_cultural_appropriateness',
         'C_semantic_preservation',
         'D_visual_coherence',
+        'E_category_cultural_adaptation',
+        'F_physical_plausibility',
         'overall_success'
     ]
     
@@ -205,14 +215,6 @@ def run_evaluation(
     
     print(f"✓ Loaded {len(metadata)} samples\n")
     
-    # Check if already completed
-    output_file = Path(output_path)
-    if output_file.exists():
-        print(f"⚠️  Output file already exists: {output_path}")
-        print("Evaluation already complete. Skipping.")
-        print("Delete the file to re-evaluate.\n")
-        return
-    
     # Load VLM using factory
     print(f"Initializing VLM: {config['vlm']}")
     evaluator = get_vlm_evaluator(model_name=config['vlm'])
@@ -220,23 +222,8 @@ def run_evaluation(
     
     # Evaluation loop
     results = []
-    checkpoint_interval = 10  # Save every 10 samples
     
-    # Check if checkpoint exists to resume
-    checkpoint_file = output_file.parent / f"{output_file.stem}_checkpoint.json"
-    
-    start_idx = 0
-    if checkpoint_file.exists():
-        print(f"Found checkpoint file: {checkpoint_file}")
-        with open(checkpoint_file, 'r') as f:
-            checkpoint_data = json.load(f)
-            results = checkpoint_data.get('results', [])
-            start_idx = len(results)
-        print(f"Resuming from sample {start_idx}\n")
-    
-    for idx, row in enumerate(tqdm(metadata[start_idx:], desc="Evaluating", initial=start_idx, total=len(metadata))):
-        actual_idx = start_idx + idx
-        
+    for idx, row in enumerate(tqdm(metadata, desc="Evaluating")):
         # Build prompts
         system_prompt, user_prompt = build_prompts(row, country.replace('-', ' ').title())
         
@@ -258,7 +245,7 @@ def run_evaluation(
             
             # Store result
             result = {
-                'index': actual_idx,
+                'index': idx,
                 'metadata': row,
                 'raw_response': response,
                 'parsed_response': parsed['parsed'],
@@ -269,35 +256,13 @@ def run_evaluation(
             results.append(result)
             
         except Exception as e:
-            print(f"\nError processing sample {actual_idx}: {e}")
+            print(f"\nError processing sample {idx}: {e}")
             results.append({
-                'index': actual_idx,
+                'index': idx,
                 'metadata': row,
                 'error': str(e),
                 'is_valid': False
             })
-        
-        # Save checkpoint every N samples
-        if (actual_idx + 1) % checkpoint_interval == 0:
-            checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(checkpoint_file, 'w') as f:
-                json.dump({
-                    'config': {
-                        'task': 'image_transcreation',
-                        'i2i_model': model_name,
-                        'target_culture': country,
-                        'vlm': config['vlm'],
-                        'vlm_short': vlm_short
-                    },
-                    'results': results,
-                    'checkpoint': True
-                }, f, indent=2)
-            print(f"\n✓ Checkpoint saved ({actual_idx + 1}/{len(metadata)} samples)")
-    
-    # Remove checkpoint file after completion
-    if checkpoint_file.exists():
-        checkpoint_file.unlink()
-        print("✓ Checkpoint removed (evaluation complete)")
     
     # Cleanup
     evaluator.cleanup()

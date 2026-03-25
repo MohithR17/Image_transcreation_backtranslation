@@ -8,7 +8,7 @@ model_name: "flux2-klein"
 metadata:
   path: "../eval/I2I_Image_transcreation/outputs/part1/{model_name}/{country}/metadata.csv"
   type: "csv"
-  filter_status: "success"
+  # filter_status: "skipped_exists"  # Optional - commented out to load all rows
 
 # Image Transcreation specific
 countries:

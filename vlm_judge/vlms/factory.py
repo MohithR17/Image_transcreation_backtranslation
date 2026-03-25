@@ -3,6 +3,7 @@ VLM Model Factory - Loads the appropriate VLM evaluator based on model name
 """
 
 from .qwen_vl import QwenVLEvaluator
+from .ovis import OvisEvaluator
 
 
 # VLM Registry - maps model names to evaluator classes
@@ -10,6 +11,8 @@ VLM_REGISTRY = {
     'qwen': QwenVLEvaluator,
     'qwen2-vl': QwenVLEvaluator,
     'qwen-vl': QwenVLEvaluator,
+    'ovis': OvisEvaluator,
+    'ovis2.5': OvisEvaluator,
     # Add more VLMs here:
     # 'gemini': GeminiEvaluator,
     # 'gpt4v': GPT4VEvaluator,

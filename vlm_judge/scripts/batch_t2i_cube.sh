@@ -3,6 +3,12 @@
 
 set -e
 
+# Set HuggingFace cache directory
+export HF_HOME=/data/hf_cache/mohithr
+export HF_HUB_CACHE=/data/hf_cache/mohithr/hub
+export TRANSFORMERS_CACHE=/data/hf_cache/mohithr/hub
+export HUGGINGFACE_HUB_CACHE=/data/hf_cache/mohithr/hub
+
 # Get VLM model (default or from argument)
 VLM="${1:-Qwen/Qwen2-VL-2B-Instruct}"
 echo "Using VLM: $VLM"

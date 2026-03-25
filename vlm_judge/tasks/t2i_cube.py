@@ -32,25 +32,19 @@ USER_PROMPT_TEMPLATE = """You are evaluating a text-to-image generation task.
 
 **Generated Image:** (provided)
 
-Evaluate the generated image using the criteria below. Score each criterion from 1 (very poor) to 5 (excellent) and give brief reasoning (1–3 sentences) per criterion. Give scores such that for each criterion, a score of 4 and 5 would indicate overall success and a score of 1, 2, or 3 would indicate failure.
+Evaluate the generated image using the three criteria below:
 
-A. **Cultural Accuracy (1–5):** Does the generated image accurately represent the cultural concept from {country}?
+**1. Cultural Relevance:** Based solely on the image, does the item depicted belong to {country}? Answer with "Yes", "No", or "Maybe" and provide brief reasoning (1-2 sentences) explaining why.
 
-B. **Visual Quality (1–5):** Is the image visually coherent, realistic, and free of artifacts?
+**2. Faithfulness (1-5 Likert scale):** If the image is from {country}, how well does it match the item in the text description? Score from 1 (very poor match) to 5 (excellent match) and provide reasoning (1-2 sentences). If Cultural Relevance is "No", you may give a low score here.
 
-C. **Prompt Adherence (1–5):** Does the image match the text prompt description?
-
-D. **Concept Recognition (1–5):** Would someone familiar with {country} culture recognize this concept and domain from the image?
-
-After scoring A/B/C/D, provide an Overall Success Score (1–5) that reflects overall task success considering all criteria together. Briefly justify the overall score (1–3 sentences).
+**3. Realism (1-5 Likert scale):** How realistic does the image look, regardless of faithfulness? Score from 1 (very unrealistic/artificial) to 5 (photorealistic) and provide reasoning (1-2 sentences).
 
 Return JSON only in the exact format:
 {{
-  "A_cultural_accuracy": {{"score": 1-5, "reason": "..."}},
-  "B_visual_quality": {{"score": 1-5, "reason": "..."}},
-  "C_prompt_adherence": {{"score": 1-5, "reason": "..."}},
-  "D_concept_recognition": {{"score": 1-5, "reason": "..."}},
-  "overall_success": {{"score": 1-5, "reason": "..."}}
+  "cultural_relevance": {{"answer": "Yes/No/Maybe", "reason": "..."}},
+  "faithfulness": {{"score": 1-5, "reason": "..."}},
+  "realism": {{"score": 1-5, "reason": "..."}}
 }}"""
 
 
@@ -85,11 +79,9 @@ def parse_response(text: str) -> Dict[str, Any]:
         Dict with parsed response and validity flag
     """
     expected_keys = [
-        'A_cultural_accuracy',
-        'B_visual_quality',
-        'C_prompt_adherence',
-        'D_concept_recognition',
-        'overall_success'
+        'cultural_relevance',
+        'faithfulness',
+        'realism'
     ]
     
     return parse_json_response(text, expected_keys, score_range=(1, 5))
@@ -120,13 +112,24 @@ def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         'valid_rate': len(valid_results) / len(results)
     }
     
-    # Compute mean scores
+    # Compute Cultural Relevance distribution (Yes/No/Maybe)
+    cultural_relevance_answers = []
+    for r in valid_results:
+        parsed = r.get('parsed_response', {})
+        if 'cultural_relevance' in parsed and 'answer' in parsed['cultural_relevance']:
+            answer = parsed['cultural_relevance']['answer']
+            cultural_relevance_answers.append(answer)
+    
+    if cultural_relevance_answers:
+        total_cr = len(cultural_relevance_answers)
+        metrics['cultural_relevance_yes'] = sum(1 for a in cultural_relevance_answers if a.lower() == 'yes') / total_cr
+        metrics['cultural_relevance_no'] = sum(1 for a in cultural_relevance_answers if a.lower() == 'no') / total_cr
+        metrics['cultural_relevance_maybe'] = sum(1 for a in cultural_relevance_answers if a.lower() == 'maybe') / total_cr
+    
+    # Compute mean scores for Likert scale metrics
     criteria = [
-        'A_cultural_accuracy',
-        'B_visual_quality',
-        'C_prompt_adherence',
-        'D_concept_recognition',
-        'overall_success'
+        'faithfulness',
+        'realism'
     ]
     
     for criterion in criteria:
@@ -314,12 +317,25 @@ def run_evaluation(
     print(f"{'='*60}")
     print(f"Total samples: {metrics['total']}")
     print(f"Valid responses: {metrics['valid']} ({metrics['valid_rate']:.1%})")
+    
+    # Print Cultural Relevance distribution
+    if 'cultural_relevance_yes' in metrics:
+        print(f"\nCultural Relevance Distribution:")
+        print(f"  Yes:   {metrics.get('cultural_relevance_yes', 0):.1%}")
+        print(f"  No:    {metrics.get('cultural_relevance_no', 0):.1%}")
+        print(f"  Maybe: {metrics.get('cultural_relevance_maybe', 0):.1%}")
+    
+    # Print mean scores
     print(f"\nMean Scores:")
-    for key, value in metrics.items():
-        if key.endswith('_mean'):
-            print(f"  {key}: {value:.2f}")
+    if 'faithfulness_mean' in metrics:
+        print(f"  Faithfulness: {metrics['faithfulness_mean']:.2f}")
+    if 'realism_mean' in metrics:
+        print(f"  Realism:      {metrics['realism_mean']:.2f}")
+    
+    # Print success rates
     print(f"\nSuccess Rates (score >= 4):")
-    for key, value in metrics.items():
-        if key.endswith('_success_rate'):
-            print(f"  {key}: {value:.1%}")
+    if 'faithfulness_success_rate' in metrics:
+        print(f"  Faithfulness: {metrics['faithfulness_success_rate']:.1%}")
+    if 'realism_success_rate' in metrics:
+        print(f"  Realism:      {metrics['realism_success_rate']:.1%}")
     print(f"{'='*60}\n")
