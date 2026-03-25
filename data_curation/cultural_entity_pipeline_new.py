@@ -67,7 +67,8 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
-GEMINI_MODEL        = "gemini/gemini-3-flash-preview"
+# GEMINI_MODEL        = "gemini/gemini-3-flash-preview"
+GEMINI_MODEL        = "gemini/gemini-3.1-pro-preview"
 LLM_CANDIDATES      = 20
 
 WIKIDATA_SEARCH_URL = "https://www.wikidata.org/w/api.php"
@@ -75,10 +76,11 @@ WIKIDATA_ENTITY_URL = "https://www.wikidata.org/w/api.php"
 WIKIPEDIA_API_URL   = "https://en.wikipedia.org/w/api.php"
 WIKIMEDIA_API_URL   = "https://commons.wikimedia.org/w/api.php"
 
-ENTITIES_PER_CATEGORY = 10
+ENTITIES_PER_CATEGORY = 20
 
 HEADERS = {
-    "User-Agent": "CulturalEntityPipeline/2.0 (research; contact@example.com)"
+    "User-Agent": "CulturalEntityPipeline/2.0 (research; contact@example.com)",
+    "no-log": "true"
 }
 
 
@@ -103,6 +105,7 @@ class CulturalEntity:
     wikidata_url: str
     wikipedia_url: str = ""
     description: str = ""
+    ai_description: str = ""
     verified: bool = False
     verification_method: str = "none"
     images: list[EntityImage] = field(default_factory=list)
@@ -285,7 +288,7 @@ def discover_entities_via_gemini(
         temperature = 0.7 if failed_entities else 0.3,
     )
 
-    is_retry = bool(failed_entities)
+    is_retry = bool(failed_entities) or (n < LLM_CANDIDATES)
 
     # Shared type-constraint clause injected into both prompt branches
     type_constraint = f"""\
@@ -295,8 +298,7 @@ is primarily ABOUT a {subcategory} item, not merely associated with or producing
 Ask yourself: "Is this thing a specific, named instance or example of '{subcategory}'?" \
 — if the answer is no, leave it out.
 For example, do NOT return a place, city, region, or person simply because they are \
-known for or linked to {subcategory} items — only return the items themselves.
-If you cannot find {n} valid items, return fewer rather than returning wrong-type entities."""
+known for or linked to {subcategory} items — only return the items themselves."""
 
     if is_retry:
         failed_lines  = "\n".join(f'  - "{f["name"]}": {f["reason"]}' for f in failed_entities)
@@ -324,7 +326,8 @@ Respond ONLY with a valid JSON array, no markdown fences:
   {{
     "name_en": "Exact Wikipedia article title",
     "name_local": "Name in local language/script",
-    "description": "One sentence description"
+    "description": "One sentence description",
+    "qid": "Wikidata ID (e.g. Q1234) or null if unknown"
   }}
 ]"""
     else:
@@ -347,7 +350,8 @@ Respond ONLY with a valid JSON array of exactly {n} items, no markdown fences:
   {{
     "name_en": "Exact Wikipedia article title",
     "name_local": "Name in local language/script",
-    "description": "One sentence description"
+    "description": "One sentence description",
+    "qid": "Wikidata ID (e.g. Q1234) or null if unknown"
   }}
 ]"""
 
@@ -500,13 +504,18 @@ def _process_suggestions(
         name_en     = suggestion.get("name_en", "").strip()
         name_local  = suggestion.get("name_local", "").strip()
         description = suggestion.get("description", "").strip()
+        provided_qid = suggestion.get("qid")
 
         if not name_en or name_en.lower() in seen_names:
             continue
         seen_names.add(name_en.lower())
 
-        qid = search_wikidata(name_en)
-        time.sleep(0.3)
+        if provided_qid and isinstance(provided_qid, str) and provided_qid.startswith("Q"):
+            qid = provided_qid.strip()
+            print(f"  [Wikidata] '{name_en}': using provided QID {qid}")
+        else:
+            qid = search_wikidata(name_en)
+            time.sleep(0.3)
 
         if not qid:
             print(f"  [Wikidata] '{name_en}': not found")
@@ -518,6 +527,7 @@ def _process_suggestions(
         time.sleep(0.3)
 
         if not entity_data:
+            print(f"  [✗ wikidata fetch failed] '{name_en}' ({qid})")
             failed.append({"name": name_en, "reason": "could not fetch entity data from Wikidata"})
             continue
 
@@ -526,7 +536,8 @@ def _process_suggestions(
             category=category, subcategory=subcategory,
             wikidata_url=f"https://www.wikidata.org/wiki/{qid}",
             wikipedia_url=entity_data["wikipedia_url"],
-            description=entity_data["description"] or description,
+            description=entity_data["description"] or "",
+            ai_description=description,
             verified=False, verification_method="none",
         )
 
@@ -547,9 +558,10 @@ def _process_suggestions(
             entity.verified = True
             entity.verification_method = "wikipedia_category"
         else:
-            failed.append({"name": name_en,
-                           "reason": f"found on Wikidata ({qid}) but could not verify link to {region}"})
-            continue
+            print(f"  [✗ verification failed] '{name_en}' ({qid}) could not verify link to {region}")
+            # failed.append({"name": name_en,
+            #                "reason": f"found on Wikidata ({qid}) but could not verify link to {region}"})
+            # continue
 
         # IMAGE ACQUISITION (priority order)
 
@@ -620,23 +632,24 @@ def run_pipeline(
             suggestions, region, category, subcategory, region_qid, seen_names
         )
         entities.extend(new_verified)
-        entities   = entities[:ENTITIES_PER_CATEGORY]
+        # entities   = entities[:ENTITIES_PER_CATEGORY]
         all_failed.extend(round_failed)  # accumulate failures across rounds
 
-        if len(entities) >= ENTITIES_PER_CATEGORY:
-            break
+        # if len(entities) >= ENTITIES_PER_CATEGORY:
+        #     break
 
         still_needed = ENTITIES_PER_CATEGORY - len(entities)
 
         if attempt == max_retries:
             break
 
-        if not all_failed:
+        if not all_failed and still_needed <= 0:
             print(f"  [!] Only {len(entities)} verified but no failures to retry on — stopping")
             break
 
         # Always ask for at least 5, or double still_needed — whichever is more
-        n_retry = max(still_needed * 2, 5)
+        # n_retry = max(still_needed * 2, 5)
+        n_retry = still_needed  
         print(f"\n[Retry {attempt + 1}/{max_retries}] "
               f"{len(entities)} verified so far, need {still_needed} more. "
               f"Sending {len(all_failed)} accumulated failed entities as context, asking for {n_retry} replacements.")
@@ -655,7 +668,6 @@ def run_pipeline(
             )
         except (ValueError, RuntimeError) as e:
             print(f"  [!] Gemini retry call failed: {e} — stopping retries")
-            break
 
     if len(entities) < ENTITIES_PER_CATEGORY:
         logger.warning(

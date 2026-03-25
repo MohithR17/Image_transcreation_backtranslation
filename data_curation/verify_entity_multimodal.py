@@ -94,21 +94,34 @@ def main():
         data = json.load(f)
 
     region = data.get("region", "Unknown")
-    new_data = {
-        "region": region,
-        "categories": {},
-        "summary": {"total_entities": 0, "total_images": 0, "failed": []}
-    }
-
-    total_verified = 0
-    total_images = 0
-
+    
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if out_path.exists():
+        print(f"\n[Resume] Found existing output file {args.output}. Resuming...")
+        with open(out_path, 'r', encoding='utf-8') as f:
+            new_data = json.load(f)
+        total_verified = new_data.get("summary", {}).get("total_entities", 0)
+        total_images = new_data.get("summary", {}).get("total_images", 0)
+    else:
+        new_data = {
+            "region": region,
+            "categories": {},
+            "summary": {"total_entities": 0, "total_images": 0, "failed": []}
+        }
+        total_verified = 0
+        total_images = 0
+
     for cat_name, subcats in data.get("categories", {}).items():
-        new_data["categories"][cat_name] = {}
+        if cat_name not in new_data["categories"]:
+            new_data["categories"][cat_name] = {}
+            
         for subcat_name, subcat_data in subcats.items():
+            if subcat_name in new_data["categories"][cat_name]:
+                print(f"\n--- [Skipping] {cat_name} / {subcat_name} (Already verified) ---")
+                continue
+
             verified_entities = []
             entities = subcat_data.get("entities", [])
             
