@@ -5,6 +5,53 @@ Improved Image Strategy:
   1. Wikipedia lead image (primary)
   2. Wikidata P18 (secondary)
   3. Wikimedia Commons generator search (region-aware fallback)
+
+Usage
+-----
+Prerequisites:
+  export LITELLM_API_KEY="your_api_key"
+  pip install requests google-genai
+
+1. Run ALL subcategories for a region (batch mode — resumable):
+   python cultural_entity_pipeline_new.py --region Morocco
+
+   Output is saved incrementally to output/morocco.json.
+   If the script is interrupted and re-run, already-completed subcategories
+   are skipped automatically.
+
+2. Run a SINGLE subcategory:
+   python cultural_entity_pipeline_new.py \\
+       --region Morocco \\
+       --category "Food & Drink" \\
+       --subcategory "Food / Cuisine"
+
+3. Skip image downloads (URLs still saved in JSON):
+   python cultural_entity_pipeline_new.py --region Morocco --no_download
+
+4. Change output directory:
+   python cultural_entity_pipeline_new.py --region Morocco --output_dir my_output
+
+5. Change max Wikidata/Wikipedia verification retries (default 3):
+   python cultural_entity_pipeline_new.py --region Morocco --max_retries 5
+
+Available regions:
+  India, Japan, China, Brazil, Mexico, Nigeria, Egypt, France, Germany, USA,
+  South Korea, Indonesia, Ethiopia, Iran, Turkey, Morocco, Peru, Thailand,
+  Vietnam, Ghana
+
+Output format (output/<region>.json):
+  {
+    "region": "Morocco",
+    "categories": {
+      "Food & Drink": {
+        "Food / Cuisine": {
+          "total": 10,
+          "entities": [ { "qid": ..., "name_en": ..., "images": [...], ... } ]
+        }
+      }
+    },
+    "summary": { "total_entities": ..., "total_images": ..., "failed": [...] }
+  }
 """
 
 import argparse
@@ -20,7 +67,8 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
-GEMINI_MODEL        = "gemini/gemini-3-flash-preview"
+# GEMINI_MODEL        = "gemini/gemini-3-flash-preview"
+GEMINI_MODEL        = "gemini/gemini-3.1-pro-preview"
 LLM_CANDIDATES      = 20
 
 WIKIDATA_SEARCH_URL = "https://www.wikidata.org/w/api.php"
@@ -28,10 +76,11 @@ WIKIDATA_ENTITY_URL = "https://www.wikidata.org/w/api.php"
 WIKIPEDIA_API_URL   = "https://en.wikipedia.org/w/api.php"
 WIKIMEDIA_API_URL   = "https://commons.wikimedia.org/w/api.php"
 
-ENTITIES_PER_CATEGORY = 10
+ENTITIES_PER_CATEGORY = 20
 
 HEADERS = {
-    "User-Agent": "CulturalEntityPipeline/2.0 (research; contact@example.com)"
+    "User-Agent": "CulturalEntityPipeline/2.0 (research; contact@example.com)",
+    "no-log": "true"
 }
 
 
@@ -56,6 +105,7 @@ class CulturalEntity:
     wikidata_url: str
     wikipedia_url: str = ""
     description: str = ""
+    ai_description: str = ""
     verified: bool = False
     verification_method: str = "none"
     images: list[EntityImage] = field(default_factory=list)
@@ -238,7 +288,17 @@ def discover_entities_via_gemini(
         temperature = 0.7 if failed_entities else 0.3,
     )
 
-    is_retry = bool(failed_entities)
+    is_retry = bool(failed_entities) or (n < LLM_CANDIDATES)
+
+    # Shared type-constraint clause injected into both prompt branches
+    type_constraint = f"""\
+IMPORTANT — entity type rule:
+Each entity you return must itself BE a "{subcategory}" — meaning its Wikipedia article \
+is primarily ABOUT a {subcategory} item, not merely associated with or producing one.
+Ask yourself: "Is this thing a specific, named instance or example of '{subcategory}'?" \
+— if the answer is no, leave it out.
+For example, do NOT return a place, city, region, or person simply because they are \
+known for or linked to {subcategory} items — only return the items themselves."""
 
     if is_retry:
         failed_lines  = "\n".join(f'  - "{f["name"]}": {f["reason"]}' for f in failed_entities)
@@ -259,12 +319,15 @@ Search the web and return {n} real {region} {subcategory} entities that:
 - Are NOT any of the already-found or failed entities above
 - Use the exact Wikipedia article title as name_en (no parentheticals, no compound names)
 
+{type_constraint}
+
 Respond ONLY with a valid JSON array, no markdown fences:
 [
   {{
     "name_en": "Exact Wikipedia article title",
     "name_local": "Name in local language/script",
-    "description": "One sentence description"
+    "description": "One sentence description",
+    "qid": "Wikidata ID (e.g. Q1234) or null if unknown"
   }}
 ]"""
     else:
@@ -280,18 +343,21 @@ Requirements:
   Good: "Atay", "Bissara", "Mahia"
   Bad: "Atay (Moroccan tea)", "Bissara soup", "Mahia fig brandy"
 
+{type_constraint}
+
 Respond ONLY with a valid JSON array of exactly {n} items, no markdown fences:
 [
   {{
     "name_en": "Exact Wikipedia article title",
     "name_local": "Name in local language/script",
-    "description": "One sentence description"
+    "description": "One sentence description",
+    "qid": "Wikidata ID (e.g. Q1234) or null if unknown"
   }}
 ]"""
 
     print(f"[Gemini+Search] {'Retry' if is_retry else 'Discovering'}: {region} | {subcategory}"
           + (f" (need {n} replacements)" if is_retry else ""))
-
+    print(f"  → Waiting for Gemini API response (may take 15–30s)...")
     logger.debug(
         "\n%s\n[GEMINI CALL] region=%s | subcategory=%s | is_retry=%s | n=%s\n"
         "--- PROMPT ---\n%s\n--- END PROMPT ---",
@@ -305,8 +371,21 @@ Respond ONLY with a valid JSON array of exactly {n} items, no markdown fences:
             config   = config,
         )
 
-        print(f"Search Query: {response.candidates[0].grounding_metadata.web_search_queries}")
-        content = response.text.strip()
+
+        # Guard: no candidates (safety filter or empty response)
+        if not response.candidates:
+            raise ValueError(f"Gemini returned no candidates (possible safety filter or empty response)")
+
+        try:
+            grounding = response.candidates[0].grounding_metadata
+            if grounding and grounding.web_search_queries:
+                print(f"Search Query: {grounding.web_search_queries}")
+        except (AttributeError, IndexError):
+            pass
+
+        content = (response.text or "").strip()
+        if not content:
+            raise ValueError("Gemini returned an empty response text")
 
         logger.debug("--- GEMINI RAW RESPONSE ---\n%s\n--- END ---", content)
 
@@ -425,13 +504,18 @@ def _process_suggestions(
         name_en     = suggestion.get("name_en", "").strip()
         name_local  = suggestion.get("name_local", "").strip()
         description = suggestion.get("description", "").strip()
+        provided_qid = suggestion.get("qid")
 
         if not name_en or name_en.lower() in seen_names:
             continue
         seen_names.add(name_en.lower())
 
-        qid = search_wikidata(name_en)
-        time.sleep(0.3)
+        if provided_qid and isinstance(provided_qid, str) and provided_qid.startswith("Q"):
+            qid = provided_qid.strip()
+            print(f"  [Wikidata] '{name_en}': using provided QID {qid}")
+        else:
+            qid = search_wikidata(name_en)
+            time.sleep(0.3)
 
         if not qid:
             print(f"  [Wikidata] '{name_en}': not found")
@@ -443,6 +527,7 @@ def _process_suggestions(
         time.sleep(0.3)
 
         if not entity_data:
+            print(f"  [✗ wikidata fetch failed] '{name_en}' ({qid})")
             failed.append({"name": name_en, "reason": "could not fetch entity data from Wikidata"})
             continue
 
@@ -451,7 +536,8 @@ def _process_suggestions(
             category=category, subcategory=subcategory,
             wikidata_url=f"https://www.wikidata.org/wiki/{qid}",
             wikipedia_url=entity_data["wikipedia_url"],
-            description=entity_data["description"] or description,
+            description=entity_data["description"] or "",
+            ai_description=description,
             verified=False, verification_method="none",
         )
 
@@ -472,9 +558,10 @@ def _process_suggestions(
             entity.verified = True
             entity.verification_method = "wikipedia_category"
         else:
-            failed.append({"name": name_en,
-                           "reason": f"found on Wikidata ({qid}) but could not verify link to {region}"})
-            continue
+            print(f"  [✗ verification failed] '{name_en}' ({qid}) could not verify link to {region}")
+            # failed.append({"name": name_en,
+            #                "reason": f"found on Wikidata ({qid}) but could not verify link to {region}"})
+            # continue
 
         # IMAGE ACQUISITION (priority order)
 
@@ -545,23 +632,24 @@ def run_pipeline(
             suggestions, region, category, subcategory, region_qid, seen_names
         )
         entities.extend(new_verified)
-        entities   = entities[:ENTITIES_PER_CATEGORY]
+        # entities   = entities[:ENTITIES_PER_CATEGORY]
         all_failed.extend(round_failed)  # accumulate failures across rounds
 
-        if len(entities) >= ENTITIES_PER_CATEGORY:
-            break
+        # if len(entities) >= ENTITIES_PER_CATEGORY:
+        #     break
 
         still_needed = ENTITIES_PER_CATEGORY - len(entities)
 
         if attempt == max_retries:
             break
 
-        if not all_failed:
+        if not all_failed and still_needed <= 0:
             print(f"  [!] Only {len(entities)} verified but no failures to retry on — stopping")
             break
 
         # Always ask for at least 5, or double still_needed — whichever is more
-        n_retry = max(still_needed * 2, 5)
+        # n_retry = max(still_needed * 2, 5)
+        n_retry = still_needed  
         print(f"\n[Retry {attempt + 1}/{max_retries}] "
               f"{len(entities)} verified so far, need {still_needed} more. "
               f"Sending {len(all_failed)} accumulated failed entities as context, asking for {n_retry} replacements.")
@@ -580,13 +668,13 @@ def run_pipeline(
             )
         except (ValueError, RuntimeError) as e:
             print(f"  [!] Gemini retry call failed: {e} — stopping retries")
-            break
 
     if len(entities) < ENTITIES_PER_CATEGORY:
-        raise ValueError(
-            f"Only {len(entities)}/{ENTITIES_PER_CATEGORY} verified entities found for "
-            f"{region} | {subcategory} after {max_retries} retries."
+        logger.warning(
+            "Only %d/%d verified entities found for %s | %s after %d retries. Continuing with partial results.",
+            len(entities), ENTITIES_PER_CATEGORY, region, subcategory, max_retries
         )
+        print(f"  [!] Warning: Only {len(entities)}/{ENTITIES_PER_CATEGORY} entities found — saving partial results.")
 
     print(f"\n[✓] Total entities: {len(entities)} "
           f"(wikidata={sum(1 for e in entities if e.verification_method == 'wikidata')}, "
@@ -659,9 +747,27 @@ def run_batch(region: str, output_dir: str = "output",
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / f"{region.replace(' ', '_').lower()}.json"
 
+    # Load existing output so already-completed subcategories can be skipped
+    if json_path.exists():
+        with open(json_path, "r", encoding="utf-8") as f:
+            combined = json.load(f)
+        total_entities = combined.get("summary", {}).get("total_entities", 0)
+        total_images   = combined.get("summary", {}).get("total_images", 0)
+        print(f"  [resume] Loaded existing output from {json_path}")
+    else:
+        combined = {"region": region, "categories": {}}
+
     logger.info("Batch mode: %s — %d subcategories", region, len(ALL_CATEGORIES))
 
     for category, subcategory in ALL_CATEGORIES:
+        # Skip if already present in the output JSON
+        existing = combined.get("categories", {}).get(category, {}).get(subcategory)
+        if existing and existing.get("total", 0) > 0:
+            print(f"  [skip] Already have {existing['total']} entities for {category} / {subcategory}")
+            total_entities += existing["total"]
+            total_images   += sum(len(e.get("images", [])) for e in existing.get("entities", []))
+            continue
+
         try:
             entities = run_pipeline(region=region, category=category, subcategory=subcategory,
                                     output_dir=output_dir, download_images=download_images,

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Transcreation Preview</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Transcreation Preview</h1>
+        <p class="muted">Search a source entity (e.g. Harira) to view suggested culturally-equivalent alternatives with generated images.</p>
+      </header>
+
+      <div class="search">
+        <input id="search-box" placeholder="Type a source entity name (Harira, Bissara, ...)" autocomplete="off">
+        <button id="btn-search">Search</button>
+      </div>
+
+      <main id="results">
+        <p class="muted">No entity selected. Try searching above.</p>
+      </main>
+
+      <footer>
+        <small>Data loaded from server-side JSON. Images are served from local filesystem.</small>
+      </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
