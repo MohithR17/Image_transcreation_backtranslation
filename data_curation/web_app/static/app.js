@@ -35,6 +35,14 @@ async function searchAndRender(name){
   renderEntity(payload);
 }
 
+function renderScore(label, val) {
+  const row = mk('', 'div', 'score-row');
+  row.appendChild(mk(label, 'span', 'score-lbl'));
+  const disp = val !== undefined && val !== null ? (typeof val === 'number' ? val.toFixed(3) : val) : 'N/A';
+  row.appendChild(mk(disp, 'span', 'score-val'));
+  return row;
+}
+
 function renderEntity(payload){
   const main = document.getElementById('results');
   main.innerHTML = '';
@@ -43,52 +51,86 @@ function renderEntity(payload){
   h.textContent = `${payload.name} — ${payload.category} / ${payload.subcategory}`;
   main.appendChild(h);
 
-  const src = payload.data.source_entity;
-  const meta = document.createElement('div'); meta.className = 'source-meta';
-  meta.appendChild(mk(src.description || ''));
-  if(src.wikipedia_url){
-    const a = document.createElement('a'); a.href = src.wikipedia_url; a.textContent = 'Wikipedia'; a.target='_blank';
-    meta.appendChild(a);
-  }
-  main.appendChild(meta);
-
+  const srcSection = document.createElement('div'); srcSection.className = 'source-section';
+  
   // show source image
   const srcImgWrap = document.createElement('div'); srcImgWrap.className = 'source-image';
+  const src = payload.data.source_entity;
   const image_url = src.image_url || (src.images && src.images[0] && src.images[0].local_path);
   if(image_url){
     srcImgWrap.appendChild(imageElem(image_url, payload.name));
   }
-  main.appendChild(srcImgWrap);
+  srcSection.appendChild(srcImgWrap);
 
-  // alternatives grid
-  const grid = document.createElement('div'); grid.className = 'alt-grid';
+  const meta = document.createElement('div'); meta.className = 'source-meta';
+  meta.appendChild(mk(`Source Region: ${payload.source_region} -> Target: ${payload.target_region}`, 'h4'));
+  meta.appendChild(mk(src.description || '', 'p'));
+  if(src.wikipedia_url){
+    const a = document.createElement('a'); a.href = src.wikipedia_url; a.textContent = 'Wikipedia'; a.target='_blank';
+    meta.appendChild(a);
+  }
+  srcSection.appendChild(meta);
+  
+  main.appendChild(srcSection);
+
+  // alternatives list
+  const list = document.createElement('div'); list.className = 'alt-list';
   const alts = payload.data.alternatives || [];
+  
+  const PROMPT_VARIANTS = ["baseline", "balanced_realism", "realism_focused", "structure_preserved"];
+  
   for(let i=0;i<alts.length;i++){
     const a = alts[i];
     const card = document.createElement('div'); card.className='alt-card';
 
-    // Image first: create a fixed-size image wrapper so cards remain uniform
-    const imgWrap = document.createElement('div'); imgWrap.className = 'img-wrap';
-    if(a.generated_image_path){
-      imgWrap.appendChild(imageElem(a.generated_image_path, a.target_item));
-    } else {
-      const ph = document.createElement('div'); ph.className = 'img-placeholder muted'; ph.textContent = 'No generated image';
-      imgWrap.appendChild(ph);
-    }
-    card.appendChild(imgWrap);
-
-    // Then metadata
-    card.appendChild(mk(`${i+1}. ${a.target_item} (${a.target_item_local || ''})`, 'h3'));
-    card.appendChild(mk(a.axis || '', 'h4', 'axis'));
-    card.appendChild(mk(a.reason || '', 'p', 'reason'));
+    // Header metadata
+    const header = document.createElement('div'); header.className = 'alt-card-header';
+    header.appendChild(mk(`${i+1}. ${a.target_item}`, 'h3'));
+    header.appendChild(mk(`Axis: ${a.axis || ''}`, 'div', 'axis'));
+    header.appendChild(mk(a.reason || '', 'p', 'reason'));
     if(a.scene_adjustments && a.scene_adjustments.length){
       const ul = document.createElement('ul');
       a.scene_adjustments.forEach(s=>ul.appendChild(mk(s,'li')));
-      card.appendChild(ul);
+      header.appendChild(ul);
     }
-    grid.appendChild(card);
+    card.appendChild(header);
+
+    // Variants Grid
+    const variantsGrid = document.createElement('div'); variantsGrid.className = 'variants-grid';
+    
+    // Ensure variants exist on this item
+    const variants = a.variants || {};
+    
+    PROMPT_VARIANTS.forEach(vName => {
+      const col = document.createElement('div'); col.className = 'variant-col';
+      col.appendChild(mk(vName.replace('_', ' '), 'div', 'variant-header'));
+      
+      const vData = variants[vName];
+      
+      const imgWrap = document.createElement('div'); imgWrap.className = 'img-wrap';
+      if(vData && vData.generated_image_path){
+        imgWrap.appendChild(imageElem(vData.generated_image_path, a.target_item));
+      } else {
+        const ph = document.createElement('div'); ph.className = 'img-placeholder muted'; ph.textContent = 'Pending/Missing';
+        imgWrap.appendChild(ph);
+      }
+      col.appendChild(imgWrap);
+      
+      if (vData && vData.eval_metrics) {
+         const scoresDiv = document.createElement('div'); scoresDiv.className = 'scores';
+         scoresDiv.appendChild(renderScore('ImageReward', vData.eval_metrics.image_reward));
+         scoresDiv.appendChild(renderScore('MC-CLIP', vData.eval_metrics.mc_clip));
+         scoresDiv.appendChild(renderScore('VLM Judge', vData.eval_metrics.vlm_judge));
+         col.appendChild(scoresDiv);
+      }
+      
+      variantsGrid.appendChild(col);
+    });
+
+    card.appendChild(variantsGrid);
+    list.appendChild(card);
   }
-  main.appendChild(grid);
+  main.appendChild(list);
 }
 
 // wire search
@@ -97,7 +139,6 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   const btn = document.getElementById('btn-search');
   const names = await fetchNames();
 
-  // simple autocomplete via datalist
   const dl = document.createElement('datalist'); dl.id='names';
   names.forEach(n=>dl.appendChild((()=>{const o=document.createElement('option'); o.value=n; return o;})()));
   document.body.appendChild(dl);
