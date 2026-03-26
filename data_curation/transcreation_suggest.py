@@ -243,6 +243,7 @@ def run_transcreation(
                         "description":  entity.get("description"),
                         "wikipedia_url": entity.get("wikipedia_url"),
                         "image_url":    entity.get("images", [{}])[0].get("url", "") if entity.get("images") else "",
+                        "local_image_path":    entity.get("images", [{}])[0].get("local_path", "") if entity.get("images") else "",
                     },
                     "alternatives": alternatives,
                 }
