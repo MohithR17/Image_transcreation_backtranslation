@@ -87,12 +87,27 @@ def _safe_filename(text: str) -> str:
 
 
 # ── Core generation ───────────────────────────────────────────────────────────
+DEFAULT_PROMPT_TEMPLATE = """You are generating a culturally adapted item photograph for a visual transcreation dataset.
+
+The reference image shows "{source_name}" — a traditional item.
+
+Your task: Generate a new photorealistic image showing "{target_item}" ({target_item_local}), the {target_region} cultural equivalent, adapted along the axis: "{axis}".
+
+Why this is equivalent: {reason}
+
+Apply these scene adjustments to make the image feel authentically {target_region}:
+{scene_adj_text}
+
+Generate a high-quality, photorealistic photograph. Match the general composition and framing of the reference image but replace all cultural elements (food, utensils, tableware, setting, colors) with authentic {target_region} equivalents as described above.
+Do not include any text or labels in the image."""
+
 def generate_image_for_alternative(
     source_entity: dict,
     alternative: dict,
     target_region: str,
     client: genai.Client,
-) -> Optional[bytes]:
+    prompt_template: str = None
+) -> tuple[Optional[bytes], str]:
     """
     Calls Gemini image generation with:
       - Source entity image (as visual reference for composition/style)
@@ -112,19 +127,16 @@ def generate_image_for_alternative(
     scene_adjustments = alternative.get("scene_adjustments", [])
     scene_adj_text    = "\n".join(f"- {a}" for a in scene_adjustments)
 
-    prompt = f"""You are generating a culturally adapted item photograph for a visual transcreation dataset.
-
-The reference image shows "{source_name}" — a traditional item.
-
-Your task: Generate a new photorealistic image showing "{target_item}" ({target_item_local}), the {target_region} cultural equivalent, adapted along the axis: "{axis}".
-
-Why this is equivalent: {reason}
-
-Apply these scene adjustments to make the image feel authentically {target_region}:
-{scene_adj_text}
-
-Generate a high-quality, photorealistic photograph. Match the general composition and framing of the reference image but replace all cultural elements (food, utensils, tableware, setting, colors) with authentic {target_region} equivalents as described above.
-Do not include any text or labels in the image."""
+    template = prompt_template if prompt_template is not None else DEFAULT_PROMPT_TEMPLATE
+    prompt = template.format(
+        source_name=source_name,
+        target_item=target_item,
+        target_item_local=target_item_local,
+        target_region=target_region,
+        axis=axis,
+        reason=reason,
+        scene_adj_text=scene_adj_text
+    )
 
     # Build contents: source image (if available) + prompt
     contents: list = []
@@ -154,13 +166,13 @@ Do not include any text or labels in the image."""
 
         for part in response.parts:
             if part.inline_data is not None:
-                return part.inline_data.data  # raw bytes
+                return part.inline_data.data, prompt  # raw bytes
 
         raise ValueError("No image part found in response")
 
     except Exception as e:
         logger.error("Image generation failed for '%s' / '%s': %s", source_name, target_item, e)
-        return None
+        return None, prompt
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
@@ -169,6 +181,7 @@ def run_image_generation(
     output_dir: str,
     output_json_path: str,
     delay: float = 2.0,
+    prompt_template: str = None,
 ) -> None:
 
     with open(transcreation_json_path, "r", encoding="utf-8") as f:
@@ -237,11 +250,12 @@ def run_image_generation(
 
                     print(f"  → '{entity_name}' alt {idx+1}/5: '{target_item}' [{alt.get('axis','')}]")
 
-                    img_bytes = generate_image_for_alternative(
+                    img_bytes, generation_prompt = generate_image_for_alternative(
                         source_entity=source_entity,
                         alternative=alt,
                         target_region=target_region,
                         client=client,
+                        prompt_template=prompt_template
                     )
 
                     # Build output record — copy all fields from alt, add path
@@ -259,6 +273,7 @@ def run_image_generation(
                             f.write(img_bytes)
 
                         alt_record["generated_image_path"] = str(img_path)
+                        alt_record["generation_prompt"] = generation_prompt
                         done += 1
                         print(f"  [✓] Saved → {img_path}")
                     else:
