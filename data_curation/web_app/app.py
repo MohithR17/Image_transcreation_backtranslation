@@ -7,30 +7,78 @@ import os
 # App root
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-# Default data file (expected to be produced by the generate script)
-# Location: data_curation/output/<stem>_with_images.json
-DATA_FILE = Path(__file__).parent.parent / "output" / "morocco_to_india_with_images.json"
-WORKSPACE_ROOT = Path(__file__).parent.parent.resolve()
+WORKSPACE_ROOT = Path(__file__).parent.parent / "transcreation_prompt_selection"
+EXPERIMENT_DIR = WORKSPACE_ROOT / "experiment_outputs"
 
-# Load data at startup (will raise if missing)
-if not DATA_FILE.exists():
-    raise RuntimeError(f"Transcreation-with-images JSON not found: {DATA_FILE}\nRun the generation script first or point DATA_FILE to the correct path.")
-
-with open(DATA_FILE, "r", encoding="utf-8") as f:
-    DATA = json.load(f)
+PROMPT_VARIANTS = ["baseline", "balanced_realism", "realism_focused", "structure_preserved"]
 
 # Build a flat index of entities by lowercase name for quick lookup
 ENTITY_INDEX = {}
-for category, subcats in DATA.get("categories", {}).items():
-    for subcat, entities in subcats.items():
-        for entity_name, entity_record in entities.items():
-            key = entity_name.strip().lower()
-            ENTITY_INDEX[key] = {
-                "category": category,
-                "subcategory": subcat,
-                "name": entity_name,
-                "record": entity_record,
-            }
+SOURCE_REGION = "Unknown"
+TARGET_REGION = "Unknown"
+
+def load_data():
+    global ENTITY_INDEX, SOURCE_REGION, TARGET_REGION
+    ENTITY_INDEX.clear()
+    
+    # We will use the baseline file to build the initial structure, then enrich with all variants
+    for variant in PROMPT_VARIANTS:
+        json_path = EXPERIMENT_DIR / variant / "evaluated.json"
+        # fallback if evaluated is not there yet but generated is
+        if not json_path.exists():
+            json_path = EXPERIMENT_DIR / variant / "generated.json"
+        
+        if not json_path.exists():
+            continue
+            
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        SOURCE_REGION = data.get("source_region", SOURCE_REGION)
+        TARGET_REGION = data.get("target_region", TARGET_REGION)
+            
+        categories = data.get("categories", {})
+        for category, subcats in categories.items():
+            for subcat, entities in subcats.items():
+                for entity_name, entity_record in entities.items():
+                    key = entity_name.strip().lower()
+                    
+                    if key not in ENTITY_INDEX:
+                        # Initialize entity record
+                        ENTITY_INDEX[key] = {
+                            "category": category,
+                            "subcategory": subcat,
+                            "name": entity_name,
+                            "source_entity": entity_record.get("source_entity", {}),
+                            "alternatives": []
+                        }
+                        # Pre-populate empty alternatives
+                        for alt in entity_record.get("alternatives", []):
+                            alt_base = {
+                                "axis": alt.get("axis"),
+                                "target_item": alt.get("target_item"),
+                                "_alt_index": alt.get("_alt_index"),
+                                "reason": alt.get("reason"),
+                                "scene_adjustments": alt.get("scene_adjustments"),
+                                "variants": {}
+                            }
+                            ENTITY_INDEX[key]["alternatives"].append(alt_base)
+                            
+                    # Inject variant data for each alternative
+                    for alt in entity_record.get("alternatives", []):
+                        target_item = alt.get("target_item")
+                        # Find the pre-populated alternative by target item instead of index
+                        # to prevent mix-ups if the order differs between variant JSON files
+                        for rec in ENTITY_INDEX[key]["alternatives"]:
+                            if rec.get("target_item") == target_item:
+                                rec["variants"][variant] = {
+                                    "generated_image_path": alt.get("generated_image_path"),
+                                    "generation_prompt": alt.get("generation_prompt"),
+                                    "eval_metrics": alt.get("eval_metrics", {})
+                                }
+                                break
+
+load_data()
 
 @app.route("/")
 def index():
@@ -44,6 +92,8 @@ def api_names():
 
 @app.route("/api/entity")
 def api_entity():
+    # Reload data simply to get latest if generating in background
+    load_data()
     name = request.args.get("name", "").strip().lower()
     if not name:
         return jsonify({"error": "missing name"}), 400
@@ -59,27 +109,24 @@ def api_entity():
     if not item:
         return jsonify({"error": "entity not found"}), 404
 
-    # Return source_entity + alternatives as-is
     return jsonify({
         "category": item["category"],
         "subcategory": item["subcategory"],
         "name": item["name"],
-        "data": item["record"],
-        "source_region": DATA.get("source_region"),
-        "target_region": DATA.get("target_region"),
+        "data": item,
+        "source_region": SOURCE_REGION,
+        "target_region": TARGET_REGION,
     })
 
 @app.route("/image")
 def serve_image():
     """Serve a local image file path safely.
     Query param: path=/absolute/or/relative/path
-    Only files within the workspace root are allowed.
     """
     raw = request.args.get("path", "")
     if not raw:
         return jsonify({"error": "missing path"}), 400
 
-    # Support paths coming from JSON (which may be relative)
     p = Path(raw)
     if not p.is_absolute():
         p = (WORKSPACE_ROOT / raw).resolve()
@@ -89,7 +136,7 @@ def serve_image():
     try:
         p_relative = p.relative_to(WORKSPACE_ROOT)
     except Exception:
-        return jsonify({"error": "file outside workspace not allowed"}), 403
+        return jsonify({"error": f"file outside workspace not allowed: {raw}"}), 403
 
     if not p.exists() or not p.is_file():
         return jsonify({"error": "file not found", "path": str(p)}), 404
@@ -98,6 +145,5 @@ def serve_image():
     return send_file(str(p), mimetype=mime_type or "application/octet-stream")
 
 if __name__ == "__main__":
-    # simple dev server
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="127.0.0.1", port=port, debug=True)
