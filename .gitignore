@@ -45,3 +45,10 @@ ENV/
 # VLM evaluation results
 vlm_judge/logs/
 vlm_judge/results/
+
+# temp purge scripts
+temp_fix_files/
+
+# Output
+data_curation/output/
+data_curation/transcreation_prompt_selection/experiment_outputs/
